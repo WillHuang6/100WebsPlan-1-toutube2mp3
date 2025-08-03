@@ -82,7 +82,8 @@ async function getPerformanceMetrics() {
     memoryUsage: process.memoryUsage(),
     cpuUsage: process.cpuUsage(),
     eventLoopDelay: 0,
-    processUptime: process.uptime()
+    processUptime: process.uptime(),
+    healthCheckTime: 0
   };
   
   // 简单的事件循环延迟测试
@@ -149,19 +150,19 @@ async function getDiskSpace() {
 // 🔨 执行命令辅助函数
 function execCommand(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const process = spawn(command, args);
+    const childProcess = spawn(command, args);
     let output = '';
     let error = '';
     
-    process.stdout.on('data', (data) => {
+    childProcess.stdout.on('data', (data) => {
       output += data.toString();
     });
     
-    process.stderr.on('data', (data) => {
+    childProcess.stderr.on('data', (data) => {
       error += data.toString();
     });
     
-    process.on('close', (code) => {
+    childProcess.on('close', (code) => {
       if (code === 0) {
         resolve(output);
       } else {
@@ -169,13 +170,13 @@ function execCommand(command: string, args: string[]): Promise<string> {
       }
     });
     
-    process.on('error', (err) => {
+    childProcess.on('error', (err) => {
       reject(err);
     });
     
     // 5秒超时
     setTimeout(() => {
-      process.kill('SIGTERM');
+      childProcess.kill('SIGTERM');
       reject(new Error('命令执行超时'));
     }, 5000);
   });

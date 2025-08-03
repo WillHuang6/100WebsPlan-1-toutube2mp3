@@ -190,7 +190,7 @@ async function testNetworkConnectivity(url: string) {
 // 🔨 执行命令辅助函数
 function execCommand(command: string, args: string[], timeoutMs = 5000): Promise<string> {
   return new Promise((resolve, reject) => {
-    const process = spawn(command, args, {
+    const childProcess = spawn(command, args, {
       env: {
         ...process.env,
         PATH: `/Users/kuangshan/Library/Python/3.9/bin:${process.env.PATH}`
@@ -200,15 +200,15 @@ function execCommand(command: string, args: string[], timeoutMs = 5000): Promise
     let output = '';
     let error = '';
     
-    process.stdout.on('data', (data) => {
+    childProcess.stdout.on('data', (data) => {
       output += data.toString();
     });
     
-    process.stderr.on('data', (data) => {
+    childProcess.stderr.on('data', (data) => {
       error += data.toString();
     });
     
-    process.on('close', (code) => {
+    childProcess.on('close', (code) => {
       if (code === 0) {
         resolve(output);
       } else {
@@ -216,17 +216,17 @@ function execCommand(command: string, args: string[], timeoutMs = 5000): Promise
       }
     });
     
-    process.on('error', (err) => {
+    childProcess.on('error', (err) => {
       reject(new Error(`进程启动失败: ${err.message}`));
     });
     
     // 超时处理
     const timeout = setTimeout(() => {
-      process.kill('SIGTERM');
+      childProcess.kill('SIGTERM');
       reject(new Error(`命令执行超时 (${timeoutMs}ms)`));
     }, timeoutMs);
     
-    process.on('close', () => {
+    childProcess.on('close', () => {
       clearTimeout(timeout);
     });
   });

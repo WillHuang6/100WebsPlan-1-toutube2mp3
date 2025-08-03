@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { getCurrentPerformanceMode } from '../performance-mode/route';
+import { getCurrentPerformanceMode } from '@/lib/performance';
 
 // Cache for processed URLs (in production, use Redis)
 const urlCache = new Map<string, { file_url: string; created_at: number }>();

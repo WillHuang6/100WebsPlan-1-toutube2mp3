@@ -10,7 +10,8 @@ export async function POST(req: NextRequest) {
     timestamp: new Date().toISOString(),
     testType,
     system: getSystemInfo(),
-    tests: {} as Record<string, any>
+    tests: {} as Record<string, any>,
+    recommendations: [] as any[]
   };
   
   try {
