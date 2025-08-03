@@ -1,0 +1,16 @@
+{
+  "functions": {
+    "app/api/convert/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/status/[taskId]/route.ts": {
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/temp/(.*)",
+      "destination": "/temp/$1"
+    }
+  ]
+}

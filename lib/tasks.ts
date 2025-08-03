@@ -1,0 +1,1 @@
+export const tasks = new Map<string, { status: string; file_url?: string; progress?: number; error?: string }>(); 
