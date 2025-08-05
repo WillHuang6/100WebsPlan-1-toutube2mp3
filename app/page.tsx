@@ -67,14 +67,35 @@ export default function Home() {
           <h2 className="text-3xl md:text-4xl font-semibold mb-6 text-gray-700">
             Free Online <span className="text-blue-900">YouTube to MP3 Converter</span>
           </h2>
-          <p className="text-xl text-gray-600 mb-4 max-w-4xl mx-auto">
-            Easily convert YouTube to MP3 with our powerful and free online YouTube to MP3 converter. 
-            Download high-quality MP3 audio from any YouTube video in seconds.
-          </p>
-          <p className="text-lg text-gray-600 max-w-4xl mx-auto">
-            No registration required. Simply paste your YouTube URL and convert YouTube to MP3 instantly. 
-            Perfect for music lovers, content creators, and anyone who wants to extract audio from YouTube videos.
-          </p>
+          <div className="max-w-5xl mx-auto">
+            <p className="text-2xl text-gray-700 mb-6 font-medium leading-relaxed">
+              Easily convert YouTube to MP3 with our powerful and free online converter.
+            </p>
+            
+            <div className="flex flex-wrap justify-center gap-6 mb-6">
+              <div className="flex items-center bg-blue-50 px-4 py-2 rounded-full">
+                <span className="text-blue-600 mr-2">⚡</span>
+                <span className="text-blue-800 font-semibold">Lightning Fast</span>
+              </div>
+              <div className="flex items-center bg-green-50 px-4 py-2 rounded-full">
+                <span className="text-green-600 mr-2">🎵</span>
+                <span className="text-green-800 font-semibold">High Quality MP3</span>
+              </div>
+              <div className="flex items-center bg-orange-50 px-4 py-2 rounded-full">
+                <span className="text-orange-600 mr-2">🆓</span>
+                <span className="text-orange-800 font-semibold">100% Free</span>
+              </div>
+              <div className="flex items-center bg-purple-50 px-4 py-2 rounded-full">
+                <span className="text-purple-600 mr-2">🔒</span>
+                <span className="text-purple-800 font-semibold">No Registration</span>
+              </div>
+            </div>
+            
+            <p className="text-lg text-gray-600 leading-relaxed">
+              Download high-quality audio from any YouTube video in seconds.<br/>
+              Perfect for music lovers, content creators, and audio enthusiasts.
+            </p>
+          </div>
         </div>
 
         {/* Main Converter */}
