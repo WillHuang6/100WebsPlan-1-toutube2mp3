@@ -1,0 +1,20 @@
+# 允许所有搜索引擎访问
+User-agent: *
+
+# 允许抓取的页面
+Allow: /
+Allow: /*.css
+Allow: /*.js
+Allow: /*.png
+Allow: /*.jpg
+Allow: /*.svg
+
+# 禁止抓取的内容
+Disallow: /api/          # API接口不需要被索引
+Disallow: /public/temp/  # 临时文件目录
+Disallow: /_next/        # Next.js内部文件
+Disallow: /temp/         # 临时文件
+Disallow: /*.mp3         # 生成的MP3文件
+
+# Sitemap位置
+Sitemap: https://www.ytb2mp3.site/sitemap.xml
