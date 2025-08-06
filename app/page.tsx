@@ -14,11 +14,28 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
+  // GA4 事件追踪函数
+  const trackEvent = (eventName: string, parameters?: Record<string, any>) => {
+    if (typeof window !== 'undefined' && (window as any).gtag) {
+      (window as any).gtag('event', eventName, {
+        event_category: 'YouTube_to_MP3_Converter',
+        event_label: url || 'unknown_url',
+        ...parameters,
+      });
+    }
+  };
+
   const handleConvert = async () => {
     if (!url.trim()) {
       setError('Please enter a YouTube URL');
       return;
     }
+
+    // 追踪转换按钮点击事件
+    trackEvent('convert_button_click', {
+      button_text: 'Convert to MP3',
+      input_url: url,
+    });
 
     setStatus('converting');
     setError(null);
@@ -35,6 +52,11 @@ export default function Home() {
       setTaskId(task_id);
       pollStatus(task_id);
     } catch (err) {
+      // 追踪转换错误事件
+      trackEvent('conversion_error', {
+        error_message: (err as Error).message,
+        input_url: url,
+      });
       setError((err as Error).message);
       setStatus('error');
     }
@@ -46,9 +68,20 @@ export default function Home() {
     const { status: taskStatus, file_url, progress } = await res.json();
     setProgress(progress || 0);
     if (taskStatus === 'finished') {
+      // 追踪转换成功事件
+      trackEvent('conversion_success', {
+        task_id: id,
+        file_url: file_url,
+        input_url: url,
+      });
       setFileUrl(file_url);
       setStatus('finished');
     } else if (taskStatus === 'error') {
+      // 追踪转换失败事件
+      trackEvent('conversion_failed', {
+        task_id: id,
+        input_url: url,
+      });
       setError('Conversion failed');
       setStatus('error');
     } else {
@@ -146,7 +179,16 @@ export default function Home() {
                 
                 <audio controls src={fileUrl} className="w-full mb-4" />
                 
-                <a href={fileUrl} download className="block">
+                <a 
+                  href={fileUrl} 
+                  download 
+                  className="block"
+                  onClick={() => trackEvent('file_download', {
+                    file_url: fileUrl,
+                    input_url: url,
+                    task_id: taskId,
+                  })}
+                >
                   <Button className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl">
                     📥 Download MP3
                   </Button>
