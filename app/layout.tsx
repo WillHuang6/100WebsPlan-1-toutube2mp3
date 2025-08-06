@@ -34,30 +34,54 @@ export default function RootLayout({
         />
         <Script id="google-analytics" strategy="afterInteractive">
           {`
+            // 检测GA是否被拦截
             window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-26MD0VDQ2F');
+            function gtag(){
+              if (typeof dataLayer !== 'undefined') {
+                dataLayer.push(arguments);
+              }
+            }
             
-            // 全局错误追踪
+            // 安全初始化GA
+            try {
+              gtag('js', new Date());
+              gtag('config', 'G-26MD0VDQ2F');
+              console.log('✅ Google Analytics 加载成功');
+            } catch (error) {
+              console.warn('⚠️ Google Analytics 被拦截，功能将降级运行');
+            }
+            
+            // 全局错误追踪 - 增加安全检查
             window.addEventListener('error', function(e) {
-              gtag('event', 'javascript_error', {
-                event_category: 'Error',
-                event_label: e.message,
-                error_file: e.filename,
-                error_line: e.lineno,
-                error_column: e.colno,
-                error_stack: e.error ? e.error.stack : 'No stack trace'
-              });
+              try {
+                if (typeof gtag === 'function') {
+                  gtag('event', 'javascript_error', {
+                    event_category: 'Error',
+                    event_label: e.message,
+                    error_file: e.filename,
+                    error_line: e.lineno,
+                    error_column: e.colno,
+                    error_stack: e.error ? e.error.stack : 'No stack trace'
+                  });
+                }
+              } catch (gtagError) {
+                console.warn('GA事件追踪失败:', gtagError);
+              }
             });
             
-            // Promise错误追踪
+            // Promise错误追踪 - 增加安全检查
             window.addEventListener('unhandledrejection', function(e) {
-              gtag('event', 'promise_rejection', {
-                event_category: 'Error',
-                event_label: e.reason,
-                error_type: 'Unhandled Promise Rejection'
-              });
+              try {
+                if (typeof gtag === 'function') {
+                  gtag('event', 'promise_rejection', {
+                    event_category: 'Error',
+                    event_label: e.reason,
+                    error_type: 'Unhandled Promise Rejection'
+                  });
+                }
+              } catch (gtagError) {
+                console.warn('GA事件追踪失败:', gtagError);
+              }
             });
           `}
         </Script>

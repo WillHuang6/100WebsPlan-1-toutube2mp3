@@ -6,14 +6,20 @@ import { Button } from '@/components/ui/button';
 
 export default function NotFound() {
   useEffect(() => {
-    // 追踪404错误
-    if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'page_not_found', {
-        event_category: 'Error',
-        event_label: window.location.pathname,
-        error_type: '404_error',
-        referrer: document.referrer || 'direct',
-      });
+    // 追踪404错误 - 增加安全检查
+    try {
+      if (typeof window !== 'undefined' && 
+          (window as any).gtag && 
+          typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'page_not_found', {
+          event_category: 'Error',
+          event_label: window.location.pathname,
+          error_type: '404_error',
+          referrer: document.referrer || 'direct',
+        });
+      }
+    } catch (error) {
+      console.warn('404页面GA追踪失败:', error);
     }
   }, []);
 

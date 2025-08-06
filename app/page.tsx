@@ -29,14 +29,21 @@ export default function Home() {
     };
   }, []);
 
-  // GA4 事件追踪函数
+  // GA4 事件追踪函数 - 增加安全检查
   const trackEvent = (eventName: string, parameters?: Record<string, any>) => {
-    if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', eventName, {
-        event_category: 'YouTube_to_MP3_Converter',
-        event_label: url || 'unknown_url',
-        ...parameters,
-      });
+    try {
+      if (typeof window !== 'undefined' && 
+          (window as any).gtag && 
+          typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', eventName, {
+          event_category: 'YouTube_to_MP3_Converter',
+          event_label: url || 'unknown_url',
+          ...parameters,
+        });
+      }
+    } catch (error) {
+      // GA被拦截时静默失败，不影响主功能
+      console.warn('Analytics tracking failed:', error);
     }
   };
 
