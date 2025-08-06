@@ -31,9 +31,6 @@ export default function RootLayout({
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-26MD0VDQ2F"
           strategy="lazyOnload"
-          onError={(e) => {
-            console.log('GA加载被阻止，这是正常现象');
-          }}
         />
         <Script id="google-analytics" strategy="lazyOnload">
           {`
@@ -44,13 +41,15 @@ export default function RootLayout({
               }
             }
             
-            // 检查GA是否可用
-            if (typeof gtag !== 'undefined') {
+            // 安全的GA初始化
+            try {
               gtag('js', new Date());
               gtag('config', 'G-26MD0VDQ2F', {
                 page_title: document.title,
                 page_location: window.location.href
               });
+            } catch (error) {
+              console.log('GA初始化失败，可能被广告拦截器阻止');
             }
           `}
         </Script>

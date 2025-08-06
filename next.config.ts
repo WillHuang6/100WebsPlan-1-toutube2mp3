@@ -1,9 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // 优化静态资源处理
-  output: 'standalone',
-  
   // 图片配置
   images: {
     remotePatterns: [
