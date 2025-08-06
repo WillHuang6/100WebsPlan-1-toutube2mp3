@@ -64,7 +64,15 @@ export default function Home() {
 
   const pollStatus = async (id: string) => {
     const res = await fetch(`/api/status/${id}`);
-    if (!res.ok) return setError('Failed to get status');
+    if (!res.ok) {
+      // 追踪API错误
+      trackEvent('api_error', {
+        api_endpoint: `/api/status/${id}`,
+        status_code: res.status,
+        error_type: 'status_check_failed',
+      });
+      return setError('Failed to get status');
+    }
     const { status: taskStatus, file_url, progress } = await res.json();
     setProgress(progress || 0);
     if (taskStatus === 'finished') {

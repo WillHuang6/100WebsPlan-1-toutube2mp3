@@ -38,6 +38,27 @@ export default function RootLayout({
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
             gtag('config', 'G-26MD0VDQ2F');
+            
+            // 全局错误追踪
+            window.addEventListener('error', function(e) {
+              gtag('event', 'javascript_error', {
+                event_category: 'Error',
+                event_label: e.message,
+                error_file: e.filename,
+                error_line: e.lineno,
+                error_column: e.colno,
+                error_stack: e.error ? e.error.stack : 'No stack trace'
+              });
+            });
+            
+            // Promise错误追踪
+            window.addEventListener('unhandledrejection', function(e) {
+              gtag('event', 'promise_rejection', {
+                event_category: 'Error',
+                event_label: e.reason,
+                error_type: 'Unhandled Promise Rejection'
+              });
+            });
           `}
         </Script>
       </body>
