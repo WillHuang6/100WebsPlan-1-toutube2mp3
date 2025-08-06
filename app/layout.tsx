@@ -27,17 +27,31 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         {children}
         
-        {/* Google Analytics */}
+        {/* Google Analytics - 优化加载策略，避免被内容拦截器阻止 */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-26MD0VDQ2F"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
+          onError={(e) => {
+            console.log('GA加载被阻止，这是正常现象');
+          }}
         />
-        <Script id="google-analytics" strategy="afterInteractive">
+        <Script id="google-analytics" strategy="lazyOnload">
           {`
             window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-26MD0VDQ2F');
+            function gtag(){
+              if (typeof dataLayer !== 'undefined') {
+                dataLayer.push(arguments);
+              }
+            }
+            
+            // 检查GA是否可用
+            if (typeof gtag !== 'undefined') {
+              gtag('js', new Date());
+              gtag('config', 'G-26MD0VDQ2F', {
+                page_title: document.title,
+                page_location: window.location.href
+              });
+            }
           `}
         </Script>
       </body>
