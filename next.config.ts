@@ -27,9 +27,6 @@ const nextConfig: NextConfig = {
   // 压缩配置
   compress: true,
   
-  // 优化构建
-  swcMinify: true,
-  
   // 头部配置，解决资源加载问题
   async headers() {
     return [

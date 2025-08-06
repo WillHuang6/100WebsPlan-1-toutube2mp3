@@ -27,7 +27,6 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         {children}
         
-        {/* Google Analytics - 优化加载策略，避免被内容拦截器阻止 */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-26MD0VDQ2F"
           strategy="lazyOnload"
@@ -35,22 +34,9 @@ export default function RootLayout({
         <Script id="google-analytics" strategy="lazyOnload">
           {`
             window.dataLayer = window.dataLayer || [];
-            function gtag(){
-              if (typeof dataLayer !== 'undefined') {
-                dataLayer.push(arguments);
-              }
-            }
-            
-            // 安全的GA初始化
-            try {
-              gtag('js', new Date());
-              gtag('config', 'G-26MD0VDQ2F', {
-                page_title: document.title,
-                page_location: window.location.href
-              });
-            } catch (error) {
-              console.log('GA初始化失败，可能被广告拦截器阻止');
-            }
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-26MD0VDQ2F');
           `}
         </Script>
       </body>
