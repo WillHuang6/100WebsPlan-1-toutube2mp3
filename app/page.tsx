@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -13,21 +13,6 @@ export default function Home() {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
-  const [isOnline, setIsOnline] = useState(true);
-
-  // 网络状态监控
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // GA4 事件追踪函数
   const trackEvent = (eventName: string, parameters?: Record<string, any>) => {
@@ -62,18 +47,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, format: 'mp3' }),
       });
-      
-      if (!convertRes.ok) {
-        let errorMessage = 'Conversion failed';
-        try {
-          const errorData = await convertRes.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          errorMessage = `HTTP ${convertRes.status}: ${convertRes.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
-      
+      if (!convertRes.ok) throw new Error((await convertRes.json()).error);
       const { task_id } = await convertRes.json();
       setTaskId(task_id);
       pollStatus(task_id);
@@ -189,14 +163,8 @@ export default function Home() {
 
             {error && (
               <Alert variant="destructive" className="mb-6">
-                <AlertTitle>转换失败</AlertTitle>
-                <AlertDescription>
-                  {error}
-                  <br />
-                  <span className="text-sm mt-2 block">
-                    请检查YouTube链接是否正确，或稍后重试。如果问题持续存在，请联系客服。
-                  </span>
-                </AlertDescription>
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
