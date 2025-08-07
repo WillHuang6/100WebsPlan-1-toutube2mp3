@@ -59,13 +59,224 @@ export async function POST(req: NextRequest) {
   console.log('🚀 任务开始:', task_id);
   console.log('📋 目标URL:', url);
   
-  // 异步处理转换
-  processWithYtDlp(task_id, url, cacheKey);
+  // 环境检测和选择处理方式
+  const isVercel = process.env.VERCEL === '1';
+  console.log('🌐 运行环境:', isVercel ? 'Vercel' : '本地');
+  
+  if (isVercel) {
+    // Vercel 环境：使用第三方 API
+    processWithAPI(task_id, url, cacheKey);
+  } else {
+    // 本地环境：使用 yt-dlp
+    processWithYtDlp(task_id, url, cacheKey);
+  }
   
   // 定期清理过期缓存
   cleanupExpiredCache();
   
   return NextResponse.json({ task_id, status: 'processing' });
+}
+
+// 使用第三方 API (Vercel 环境)
+async function processWithAPI(task_id: string, url: string, cacheKey: string) {
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    tasks.set(task_id, { status: 'error', error: '无法提取视频ID' });
+    return;
+  }
+
+  console.log('🎯 Vercel 环境：使用第三方 API 处理, 视频ID:', videoId);
+  tasks.set(task_id, { status: 'processing', progress: 10 });
+
+  // 可用的第三方 API 服务
+  const apiServices = [
+    {
+      name: '9xbuddy API',
+      url: `https://9xbuddy.org/api/ajaxSearch?q=${encodeURIComponent(url)}&lang=en`,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://9xbuddy.org/'
+      }
+    },
+    {
+      name: 'Y2mate API',
+      url: 'https://www.y2mate.com/mates/analyzeV2/ajax',
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+        'Referer': 'https://www.y2mate.com/'
+      },
+      body: new URLSearchParams({
+        k_query: url,
+        k_page: 'home',
+        hl: 'en',
+        q_auto: '1'
+      })
+    },
+    {
+      name: 'SaveFrom API',
+      url: `https://worker-savefrom.savefrom.net/extract?url=${encodeURIComponent(url)}&lang=en`,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://savefrom.net/'
+      }
+    }
+  ];
+
+  // 尝试不同的 API 服务
+  for (let i = 0; i < apiServices.length; i++) {
+    const service = apiServices[i];
+    
+    try {
+      console.log(`🔄 尝试 ${service.name}...`);
+      tasks.set(task_id, { status: 'processing', progress: 20 + (i * 20) });
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+
+      let response;
+      if (service.method === 'POST') {
+        response = await fetch(service.url, {
+          method: 'POST',
+          headers: service.headers,
+          body: service.body,
+          signal: controller.signal
+        });
+      } else {
+        response = await fetch(service.url, {
+          method: 'GET',
+          headers: service.headers,
+          signal: controller.signal
+        });
+      }
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log(`📊 ${service.name} 响应状态:`, response.status);
+      
+      // 解析不同 API 的响应格式
+      const downloadUrl = parseAPIResponse(service.name, data);
+      
+      if (downloadUrl) {
+        console.log(`✅ ${service.name} 成功获取下载链接`);
+        
+        // 下载音频文件
+        tasks.set(task_id, { status: 'processing', progress: 70 });
+        const audioData = await downloadAudio(downloadUrl);
+        
+        if (audioData) {
+          console.log('✅ 音频下载完成');
+          
+          // 完成任务
+          const file_url = `/api/download/${task_id}`;
+          
+          // 更新缓存
+          urlCache.set(cacheKey, {
+            file_url,
+            created_at: Date.now()
+          });
+          
+          tasks.set(task_id, {
+            status: 'finished',
+            file_url,
+            progress: 100,
+            audioBuffer: audioData,
+            title: 'YouTube Audio'
+          });
+          
+          console.log('🎉 API 转换成功完成!', file_url);
+          return;
+        }
+      }
+      
+    } catch (error) {
+      console.warn(`❌ ${service.name} 失败:`, (error as Error).message);
+      continue;
+    }
+  }
+  
+  // 所有API都失败了
+  console.error('💥 所有第三方API都失败了');
+  tasks.set(task_id, {
+    status: 'error',
+    error: 'Vercel 环境暂时无法处理该视频，请稍后重试'
+  });
+}
+
+// 解析API响应
+function parseAPIResponse(serviceName: string, data: any): string | null {
+  try {
+    if (serviceName.includes('9xbuddy')) {
+      // 9xbuddy 响应格式
+      if (data.status === 'success' && data.data && data.data.links) {
+        const mp3Links = data.data.links.filter((link: any) => 
+          link.type && link.type.includes('mp3')
+        );
+        return mp3Links.length > 0 ? mp3Links[0].url : null;
+      }
+    } else if (serviceName.includes('Y2mate')) {
+      // Y2mate 响应格式
+      if (data.status === 'ok' && data.links && data.links.mp3) {
+        const mp3Keys = Object.keys(data.links.mp3);
+        if (mp3Keys.length > 0) {
+          const bestQuality = data.links.mp3[mp3Keys[0]];
+          return bestQuality.url;
+        }
+      }
+    } else if (serviceName.includes('SaveFrom')) {
+      // SaveFrom 响应格式
+      if (data && data.urls && data.urls.length > 0) {
+        const audioUrl = data.urls.find((item: any) => 
+          item.type && item.type.includes('audio')
+        );
+        return audioUrl ? audioUrl.url : data.urls[0].url;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('解析API响应失败:', error);
+    return null;
+  }
+}
+
+// 下载音频文件
+async function downloadAudio(downloadUrl: string): Promise<Buffer | null> {
+  try {
+    console.log('📥 开始下载音频:', downloadUrl);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2分钟超时
+    
+    const response = await fetch(downloadUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`下载失败: ${response.status} ${response.statusText}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+    
+  } catch (error) {
+    console.error('下载音频失败:', error);
+    return null;
+  }
 }
 
 // 智能 cookies 策略 - 尝试多种浏览器
@@ -128,7 +339,7 @@ async function tryWithDifferentBrowsersForDownload(baseCommand: string): Promise
   return stdout;
 }
 
-// 使用 yt-dlp 处理
+// 使用 yt-dlp 处理 (本地环境)
 async function processWithYtDlp(task_id: string, url: string, cacheKey: string) {
   const videoId = extractVideoId(url);
   if (!videoId) {
@@ -136,11 +347,11 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
     return;
   }
 
-  console.log('🎯 开始 yt-dlp 处理, 视频ID:', videoId);
+  console.log('🎯 本地环境：使用 yt-dlp 处理, 视频ID:', videoId);
   tasks.set(task_id, { status: 'processing', progress: 10 });
 
   // 创建临时目录
-  const tempDir = process.env.VERCEL === '1' ? '/tmp' : os.tmpdir();
+  const tempDir = os.tmpdir();
   const outputPath = path.join(tempDir, `ytdl_${task_id}`);
   
   try {
