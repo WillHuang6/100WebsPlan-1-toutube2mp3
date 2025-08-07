@@ -137,23 +137,40 @@ export default function Home() {
               </div>
             )}
 
-            {status === 'finished' && fileUrl && (
+            {status === 'finished' && fileUrl && taskId && (
               <div className="border-2 border-green-200 bg-green-50 rounded-xl p-6">
                 <div className="text-center mb-4">
                   <h3 className="text-xl font-semibold text-green-800 mb-2">✅ Conversion Complete!</h3>
-                  <p className="text-green-600">Your MP3 is ready for download</p>
+                  <p className="text-green-600">Your MP3 is ready for download and streaming</p>
                 </div>
                 
-                <audio controls src={fileUrl} className="w-full mb-4" />
+                {/* 快速流播放器 */}
+                <div className="mb-4">
+                  <audio 
+                    controls 
+                    src={`/api/stream/${taskId}`}
+                    className="w-full"
+                    preload="metadata"
+                  />
+                </div>
                 
-                <a href={fileUrl} download className="block">
-                  <Button className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl">
-                    📥 Download MP3
-                  </Button>
-                </a>
+                {/* 下载按钮组 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <a href={fileUrl} download className="block">
+                    <Button className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl">
+                      📥 Download MP3
+                    </Button>
+                  </a>
+                  
+                  <a href={`/api/stream/${taskId}`} target="_blank" className="block">
+                    <Button variant="outline" className="w-full h-12 border-green-600 text-green-600 hover:bg-green-50 font-semibold rounded-xl">
+                      🎵 Open in Player
+                    </Button>
+                  </a>
+                </div>
                 
                 <p className="text-sm text-gray-500 text-center mt-3">
-                  File expires in 24 hours
+                  File expires in 24 hours • Instant streaming available
                 </p>
               </div>
             )}

@@ -232,18 +232,18 @@ export async function POST(req: NextRequest) {
     
     async function performConversion() {
 
-      // 设置环境和路径
+      // 设置环境和路径 - 使用系统临时目录适配serverless
       const env = {
         ...process.env,
         PATH: `/Users/kuangshan/Library/Python/3.9/bin:${process.env.PATH}`
       };
       
-      const publicPath = path.join(process.cwd(), 'public', 'temp');
-      if (!fs.existsSync(publicPath)) {
-        fs.mkdirSync(publicPath, { recursive: true });
-      }
+      // 在serverless环境中使用系统临时目录
+      const tempDir = os.tmpdir();
+      const outputFile = path.join(tempDir, `${task_id}.mp3`);
       
-      const outputFile = path.join(publicPath, `${task_id}.mp3`);
+      console.log('📁 使用临时目录:', tempDir);
+      console.log('📄 输出文件路径:', outputFile);
       
       tasks.set(task_id, { status: 'processing', progress: 10 });
       console.log('🚀 开始智能转换:', url);
@@ -744,7 +744,7 @@ export async function POST(req: NextRequest) {
       console.log('🎯 ============================================');
       console.log('');
 
-      const file_url = `/temp/${task_id}.mp3`;
+      const file_url = `/api/download/${task_id}`;
       
       // 🗄️ 更新缓存
       urlCache.set(cacheKey, {
@@ -781,12 +781,17 @@ function cleanupExpiredCache() {
   
   for (const [key, value] of urlCache.entries()) {
     if (now - value.created_at > CACHE_DURATION) {
-      // 删除过期的缓存文件
+      // 删除过期的缓存文件 - 从临时目录中删除
       try {
-        const filePath = path.join(process.cwd(), 'public', value.file_url);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          console.log(`🗑️ 删除过期文件: ${value.file_url}`);
+        // 从API路径中提取taskId
+        const taskId = value.file_url.split('/').pop();
+        if (taskId) {
+          const tempDir = os.tmpdir();
+          const filePath = path.join(tempDir, `${taskId}.mp3`);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`🗑️ 删除过期文件: ${filePath}`);
+          }
         }
       } catch (error) {
         console.error('删除文件失败:', error);
