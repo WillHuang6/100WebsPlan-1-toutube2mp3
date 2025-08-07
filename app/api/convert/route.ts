@@ -58,10 +58,12 @@ export async function POST(req: NextRequest) {
 
   console.log('🚀 任务开始:', task_id);
   console.log('📋 目标URL:', url);
+  console.log('📊 任务创建后 tasks 数量:', tasks.size);
   
   // 环境检测和选择处理方式
   const isVercel = process.env.VERCEL === '1';
   console.log('🌐 运行环境:', isVercel ? 'Vercel' : '本地');
+  console.log('🔧 VERCEL 环境变量:', process.env.VERCEL);
   
   if (isVercel) {
     // Vercel 环境：使用第三方 API
@@ -81,11 +83,13 @@ export async function POST(req: NextRequest) {
 async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   const videoId = extractVideoId(url);
   if (!videoId) {
+    console.log('❌ 无法提取视频ID:', url);
     tasks.set(task_id, { status: 'error', error: '无法提取视频ID' });
     return;
   }
 
   console.log('🎯 Vercel 环境：使用第三方 API 处理, 视频ID:', videoId);
+  console.log('📊 Processing 时 tasks 数量:', tasks.size);
   tasks.set(task_id, { status: 'processing', progress: 10 });
 
   // 可用的第三方 API 服务
@@ -208,10 +212,13 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   
   // 所有API都失败了
   console.error('💥 所有第三方API都失败了');
+  console.log('📊 Error 时 tasks 数量:', tasks.size);
+  console.log('📋 Error 时 task_id:', task_id);
   tasks.set(task_id, {
     status: 'error',
     error: 'Vercel 环境暂时无法处理该视频，请稍后重试'
   });
+  console.log('📊 Error 设置后 tasks 数量:', tasks.size);
 }
 
 // 解析API响应
