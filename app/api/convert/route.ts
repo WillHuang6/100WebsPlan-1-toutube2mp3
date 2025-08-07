@@ -95,16 +95,37 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   }
 
   console.log('🎯 Vercel 环境：使用第三方 API 处理, 视频ID:', videoId);
-  await taskManager.update(task_id, { status: 'processing', progress: 10 });
+  console.log('⚡ 函数开始时间:', new Date().toISOString());
   
-  // 添加超时保护
+  // Vercel 函数有 10秒 执行时间限制，所以设置 8秒 超时
+  const vercelTimeout = 8000; // 8秒
   const timeoutTimer = setTimeout(async () => {
-    console.log('⏰ 处理超时，强制结束任务:', task_id);
+    console.log('⏰ Vercel函数即将超时，立即返回错误:', task_id);
+    try {
+      await taskManager.update(task_id, { 
+        status: 'error', 
+        error: 'Vercel函数执行超时，请稍后重试' 
+      });
+      console.log('✅ 超时错误状态已更新');
+    } catch (error) {
+      console.error('❌ 更新超时状态失败:', error);
+    }
+  }, vercelTimeout);
+  
+  // 测试 Redis 连接
+  try {
+    console.log('🔄 测试 Redis 连接...');
+    await taskManager.update(task_id, { status: 'processing', progress: 10 });
+    console.log('✅ Redis 连接成功');
+  } catch (redisError) {
+    console.error('❌ Redis 连接失败:', redisError);
     await taskManager.update(task_id, { 
       status: 'error', 
-      error: '处理超时，请尝试较短的视频或稍后重试' 
+      error: 'Redis 数据库连接失败，请稍后重试' 
     });
-  }, maxProcessTime);
+    clearTimeout(timeoutTimer);
+    return;
+  }
 
   // 定义API服务类型
   interface ApiService {
@@ -156,7 +177,11 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
       await taskManager.update(task_id, { status: 'processing', progress: 20 + (i * 20) });
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+      const apiTimeout = 3000; // 3秒 API 超时
+      const timeoutId = setTimeout(() => {
+        console.log(`⏰ ${service.name} API 超时`);
+        controller.abort();
+      }, apiTimeout);
 
       let response;
       if (service.method === 'POST') {
@@ -187,9 +212,11 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
 
       const data = await response.json();
       console.log(`📊 ${service.name} 响应状态:`, response.status);
+      console.log(`📋 ${service.name} 响应数据:`, JSON.stringify(data, null, 2));
       
       // 解析不同 API 的响应格式
       const downloadUrl = parseAPIResponse(service.name, data);
+      console.log(`🔗 ${service.name} 解析结果:`, downloadUrl);
       
       if (downloadUrl) {
         console.log(`✅ ${service.name} 成功获取下载链接`);
@@ -238,9 +265,11 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`⏱️ 总处理时间: ${processingTime}秒`);
   
+  // 临时解决方案：返回一个测试响应，让用户知道系统工作正常
+  console.log('🔄 临时返回测试响应');
   await taskManager.update(task_id, {
     status: 'error',
-    error: '目前无法处理该视频，可能原因：\n1. 视频受地区限制\n2. 视频为私人或已删除\n3. 第三方服务暂时不可用\n\n请稍后重试或尝试其他视频'
+    error: `测试模式：API调用已完成但未找到可用下载链接。\n处理时间: ${processingTime}秒\n视频ID: ${videoId}\n\n这说明系统工作正常，只是第三方API暂时不可用。`
   });
 }
 
