@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { tasks } from '@/lib/tasks';
+import { taskManager } from '@/lib/tasks';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
   
   // 检查任务是否存在且已完成
-  const task = tasks.get(taskId);
+  const task = await taskManager.get(taskId);
   if (!task || task.status !== 'finished') {
     return NextResponse.json({ error: 'File not found or not ready' }, { status: 404 });
   }

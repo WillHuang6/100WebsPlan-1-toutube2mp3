@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { tasks } from '@/lib/tasks';
+import { taskManager } from '@/lib/tasks';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   const cached = urlCache.get(cacheKey);
   if (cached && Date.now() - cached.created_at < CACHE_DURATION) {
     const cachedTaskId = uuidv4();
-    tasks.set(cachedTaskId, { 
+    await taskManager.create(cachedTaskId, { 
       status: 'finished', 
       file_url: cached.file_url, 
       progress: 100 
@@ -54,11 +54,10 @@ export async function POST(req: NextRequest) {
   }
   
   const task_id = uuidv4();
-  tasks.set(task_id, { status: 'processing', progress: 0 });
+  await taskManager.create(task_id, { status: 'processing', progress: 0 });
 
   console.log('🚀 任务开始:', task_id);
   console.log('📋 目标URL:', url);
-  console.log('📊 任务创建后 tasks 数量:', tasks.size);
   
   // 环境检测和选择处理方式
   const isVercel = process.env.VERCEL === '1';
@@ -84,13 +83,12 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   const videoId = extractVideoId(url);
   if (!videoId) {
     console.log('❌ 无法提取视频ID:', url);
-    tasks.set(task_id, { status: 'error', error: '无法提取视频ID' });
+    await taskManager.update(task_id, { status: 'error', error: '无法提取视频ID' });
     return;
   }
 
   console.log('🎯 Vercel 环境：使用第三方 API 处理, 视频ID:', videoId);
-  console.log('📊 Processing 时 tasks 数量:', tasks.size);
-  tasks.set(task_id, { status: 'processing', progress: 10 });
+  await taskManager.update(task_id, { status: 'processing', progress: 10 });
 
   // 可用的第三方 API 服务
   const apiServices = [
@@ -139,7 +137,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     
     try {
       console.log(`🔄 尝试 ${service.name}...`);
-      tasks.set(task_id, { status: 'processing', progress: 20 + (i * 20) });
+      await taskManager.update(task_id, { status: 'processing', progress: 20 + (i * 20) });
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
@@ -176,7 +174,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
         console.log(`✅ ${service.name} 成功获取下载链接`);
         
         // 下载音频文件
-        tasks.set(task_id, { status: 'processing', progress: 70 });
+        await taskManager.update(task_id, { status: 'processing', progress: 70 });
         const audioData = await downloadAudio(downloadUrl);
         
         if (audioData) {
@@ -191,7 +189,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
             created_at: Date.now()
           });
           
-          tasks.set(task_id, {
+          await taskManager.update(task_id, {
             status: 'finished',
             file_url,
             progress: 100,
@@ -212,13 +210,11 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   
   // 所有API都失败了
   console.error('💥 所有第三方API都失败了');
-  console.log('📊 Error 时 tasks 数量:', tasks.size);
   console.log('📋 Error 时 task_id:', task_id);
-  tasks.set(task_id, {
+  await taskManager.update(task_id, {
     status: 'error',
     error: 'Vercel 环境暂时无法处理该视频，请稍后重试'
   });
-  console.log('📊 Error 设置后 tasks 数量:', tasks.size);
 }
 
 // 解析API响应
@@ -352,12 +348,12 @@ async function tryWithDifferentBrowsersForDownload(baseCommand: string): Promise
 async function processWithYtDlp(task_id: string, url: string, cacheKey: string) {
   const videoId = extractVideoId(url);
   if (!videoId) {
-    tasks.set(task_id, { status: 'error', error: '无法提取视频ID' });
+    await taskManager.update(task_id, { status: 'error', error: '无法提取视频ID' });
     return;
   }
 
   console.log('🎯 本地环境：使用 yt-dlp 处理, 视频ID:', videoId);
-  tasks.set(task_id, { status: 'processing', progress: 10 });
+  await taskManager.update(task_id, { status: 'processing', progress: 10 });
 
   // 创建临时目录
   const tempDir = os.tmpdir();
@@ -370,7 +366,7 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
     }
 
     console.log('📁 临时目录:', outputPath);
-    tasks.set(task_id, { status: 'processing', progress: 20 });
+    await taskManager.update(task_id, { status: 'processing', progress: 20 });
 
     // 第一步：获取视频信息（智能 cookies 策略）
     console.log('🔍 获取视频信息...');
@@ -385,7 +381,7 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
       console.log('🎬 视频标题:', title);
       console.log('⏱️ 视频时长:', duration);
       
-      tasks.set(task_id, { 
+      await taskManager.update(task_id, { 
         status: 'processing', 
         progress: 40, 
         title: title 
@@ -393,7 +389,7 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
       
     } catch (infoError) {
       console.warn('⚠️ 获取视频信息失败，但继续处理:', (infoError as Error).message);
-      tasks.set(task_id, { 
+      await taskManager.update(task_id, { 
         status: 'processing', 
         progress: 40, 
         title: 'YouTube Audio' 
@@ -402,7 +398,7 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
 
     // 第二步：下载音频
     console.log('🎵 开始下载音频...');
-    tasks.set(task_id, { status: 'processing', progress: 50 });
+    await taskManager.update(task_id, { status: 'processing', progress: 50 });
 
     const outputTemplate = path.join(outputPath, '%(title)s.%(ext)s');
     const downloadCommand = `python3 -m yt_dlp -x --audio-format mp3 --audio-quality 192K --cookies-from-browser chrome --no-check-certificate --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" -o "${outputTemplate}" "${url}"`;
@@ -414,7 +410,7 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
     
     console.log('📥 yt-dlp 输出:', stdout);
 
-    tasks.set(task_id, { status: 'processing', progress: 80 });
+    await taskManager.update(task_id, { status: 'processing', progress: 80 });
 
     // 第三步：找到下载的文件
     console.log('📂 查找下载的文件...');
@@ -434,7 +430,7 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
     const fileSizeMB = (audioBuffer.length / 1024 / 1024).toFixed(2);
     
     console.log(`✅ 文件读取完成，大小: ${fileSizeMB}MB`);
-    tasks.set(task_id, { status: 'processing', progress: 90 });
+    await taskManager.update(task_id, { status: 'processing', progress: 90 });
 
     // 清理临时文件
     try {
@@ -446,7 +442,8 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
 
     // 完成任务
     const file_url = `/api/download/${task_id}`;
-    const title = tasks.get(task_id)?.title || 'audio';
+    const currentTask = await taskManager.get(task_id);
+    const title = currentTask?.title || 'audio';
     
     // 更新缓存
     urlCache.set(cacheKey, {
@@ -454,7 +451,7 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
       created_at: Date.now()
     });
     
-    tasks.set(task_id, {
+    await taskManager.update(task_id, {
       status: 'finished',
       file_url,
       progress: 100,
@@ -492,7 +489,7 @@ async function processWithYtDlp(task_id: string, url: string, cacheKey: string) 
       userFriendlyError = '访问被拒绝，可能是地区限制';
     }
     
-    tasks.set(task_id, {
+    await taskManager.update(task_id, {
       status: 'error',
       error: userFriendlyError
     });

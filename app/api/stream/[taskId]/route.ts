@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { tasks } from '@/lib/tasks';
+import { taskManager } from '@/lib/tasks';
 
 // 专门用于音频流播放的端点
 export async function GET(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ task
   console.log('🎵 请求音频流:', taskId);
   
   // 检查任务状态
-  const task = tasks.get(taskId);
+  const task = await taskManager.get(taskId);
   if (!task || task.status !== 'finished') {
     console.log('❌ 任务未完成或不存在:', task?.status);
     return new NextResponse('Audio not ready', { status: 404 });
