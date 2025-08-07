@@ -1,4 +1,16 @@
-import { kv } from '@vercel/kv';
+import { createClient, RedisClientType } from 'redis';
+
+let client: RedisClientType | null = null;
+
+async function getRedisClient(): Promise<RedisClientType> {
+  if (!client) {
+    client = createClient({
+      url: process.env.REDIS_URL
+    });
+    await client.connect();
+  }
+  return client;
+}
 
 export interface Task {
   id: string;
@@ -21,7 +33,8 @@ export class TaskStore {
       createdAt: task.createdAt || Date.now()
     };
     
-    await kv.setex(
+    const redis = await getRedisClient();
+    await redis.setEx(
       `${this.TASK_PREFIX}${taskId}`,
       this.TASK_TTL,
       JSON.stringify(fullTask)
@@ -29,12 +42,14 @@ export class TaskStore {
   }
 
   static async get(taskId: string): Promise<Task | null> {
-    const result = await kv.get<string>(`${this.TASK_PREFIX}${taskId}`);
+    const redis = await getRedisClient();
+    const result = await redis.get(`${this.TASK_PREFIX}${taskId}`);
     return result ? JSON.parse(result) : null;
   }
 
   static async delete(taskId: string): Promise<void> {
-    await kv.del(`${this.TASK_PREFIX}${taskId}`);
+    const redis = await getRedisClient();
+    await redis.del(`${this.TASK_PREFIX}${taskId}`);
   }
 
   static async update(taskId: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>): Promise<Task | null> {
@@ -53,7 +68,8 @@ export class TaskStore {
   }
 
   static async exists(taskId: string): Promise<boolean> {
-    const exists = await kv.exists(`${this.TASK_PREFIX}${taskId}`);
+    const redis = await getRedisClient();
+    const exists = await redis.exists(`${this.TASK_PREFIX}${taskId}`);
     return exists === 1;
   }
 }
