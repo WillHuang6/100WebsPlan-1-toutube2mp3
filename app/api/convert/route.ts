@@ -66,10 +66,14 @@ export async function POST(req: NextRequest) {
   
   if (isVercel) {
     // Vercel 环境：使用第三方 API
-    processWithAPI(task_id, url, cacheKey);
+    processWithAPI(task_id, url, cacheKey).catch(error => {
+      console.error('❌ processWithAPI error:', error);
+    });
   } else {
     // 本地环境：使用 yt-dlp
-    processWithYtDlp(task_id, url, cacheKey);
+    processWithYtDlp(task_id, url, cacheKey).catch(error => {
+      console.error('❌ processWithYtDlp error:', error);
+    });
   }
   
   // 定期清理过期缓存
@@ -80,6 +84,9 @@ export async function POST(req: NextRequest) {
 
 // 使用第三方 API (Vercel 环境)
 async function processWithAPI(task_id: string, url: string, cacheKey: string) {
+  const startTime = Date.now();
+  const maxProcessTime = 5 * 60 * 1000; // 5分钟最大处理时间
+  
   const videoId = extractVideoId(url);
   if (!videoId) {
     console.log('❌ 无法提取视频ID:', url);
@@ -89,45 +96,54 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
 
   console.log('🎯 Vercel 环境：使用第三方 API 处理, 视频ID:', videoId);
   await taskManager.update(task_id, { status: 'processing', progress: 10 });
+  
+  // 添加超时保护
+  const timeoutTimer = setTimeout(async () => {
+    console.log('⏰ 处理超时，强制结束任务:', task_id);
+    await taskManager.update(task_id, { 
+      status: 'error', 
+      error: '处理超时，请尝试较短的视频或稍后重试' 
+    });
+  }, maxProcessTime);
+
+  // 定义API服务类型
+  interface ApiService {
+    name: string;
+    url: string;
+    method: 'GET' | 'POST';
+    headers: Record<string, string>;
+    params?: Record<string, string>;
+    body?: string;
+  }
 
   // 可用的第三方 API 服务
-  const apiServices = [
+  const apiServices: ApiService[] = [
     {
-      name: '9xbuddy API',
-      url: `https://9xbuddy.org/api/ajaxSearch?q=${encodeURIComponent(url)}&lang=en`,
-      method: 'GET' as const,
+      name: 'RapidAPI YT Downloader',
+      url: 'https://youtube-mp36.p.rapidapi.com/dl',
+      method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
-        'Referer': 'https://9xbuddy.org/'
-      }
-    },
-    {
-      name: 'Y2mate API',
-      url: 'https://www.y2mate.com/mates/analyzeV2/ajax',
-      method: 'POST' as const,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-        'Referer': 'https://www.y2mate.com/'
+        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY || 'demo-key',
+        'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       },
-      body: new URLSearchParams({
-        k_query: url,
-        k_page: 'home',
-        hl: 'en',
-        q_auto: '1'
-      })
+      params: { id: videoId }
     },
     {
-      name: 'SaveFrom API',
-      url: `https://worker-savefrom.savefrom.net/extract?url=${encodeURIComponent(url)}&lang=en`,
-      method: 'GET' as const,
+      name: 'Generic API',
+      url: 'https://api.cobalt.tools/api/json',
+      method: 'POST',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json',
-        'Referer': 'https://savefrom.net/'
-      }
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      body: JSON.stringify({
+        url: url,
+        vCodec: 'h264',
+        vQuality: 'max',
+        aFormat: 'mp3'
+      })
     }
   ];
 
@@ -146,14 +162,19 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
       if (service.method === 'POST') {
         response = await fetch(service.url, {
           method: 'POST',
-          headers: service.headers as unknown as Record<string, string>,
+          headers: service.headers,
           body: service.body,
           signal: controller.signal
         });
       } else {
-        response = await fetch(service.url, {
+        let requestUrl = service.url;
+        if (service.params) {
+          const params = new URLSearchParams(service.params);
+          requestUrl += `?${params.toString()}`;
+        }
+        response = await fetch(requestUrl, {
           method: 'GET',
-          headers: service.headers as unknown as Record<string, string>,
+          headers: service.headers,
           signal: controller.signal
         });
       }
@@ -198,6 +219,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
           });
           
           console.log('🎉 API 转换成功完成!', file_url);
+          clearTimeout(timeoutTimer); // 清除超时定时器
           return;
         }
       }
@@ -209,41 +231,50 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   }
   
   // 所有API都失败了
+  clearTimeout(timeoutTimer); // 清除超时定时器
   console.error('💥 所有第三方API都失败了');
   console.log('📋 Error 时 task_id:', task_id);
+  
+  const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`⏱️ 总处理时间: ${processingTime}秒`);
+  
   await taskManager.update(task_id, {
     status: 'error',
-    error: 'Vercel 环境暂时无法处理该视频，请稍后重试'
+    error: '目前无法处理该视频，可能原因：\n1. 视频受地区限制\n2. 视频为私人或已删除\n3. 第三方服务暂时不可用\n\n请稍后重试或尝试其他视频'
   });
 }
 
 // 解析API响应
 function parseAPIResponse(serviceName: string, data: any): string | null {
   try {
-    if (serviceName.includes('9xbuddy')) {
-      // 9xbuddy 响应格式
-      if (data.status === 'success' && data.data && data.data.links) {
-        const mp3Links = data.data.links.filter((link: any) => 
-          link.type && link.type.includes('mp3')
-        );
-        return mp3Links.length > 0 ? mp3Links[0].url : null;
+    console.log(`🔍 解析 ${serviceName} 响应:`, JSON.stringify(data, null, 2));
+    
+    if (serviceName.includes('RapidAPI')) {
+      // RapidAPI 响应格式
+      if (data.status === 'ok' || data.status === 'success') {
+        return data.link || data.url || data.download_url;
       }
-    } else if (serviceName.includes('Y2mate')) {
-      // Y2mate 响应格式
-      if (data.status === 'ok' && data.links && data.links.mp3) {
-        const mp3Keys = Object.keys(data.links.mp3);
-        if (mp3Keys.length > 0) {
-          const bestQuality = data.links.mp3[mp3Keys[0]];
-          return bestQuality.url;
-        }
+    } else if (serviceName.includes('Generic')) {
+      // Cobalt API 响应格式
+      if (data.status === 'success' || data.status === 'stream') {
+        return data.url || data.audio_url;
       }
-    } else if (serviceName.includes('SaveFrom')) {
-      // SaveFrom 响应格式
-      if (data && data.urls && data.urls.length > 0) {
-        const audioUrl = data.urls.find((item: any) => 
-          item.type && item.type.includes('audio')
-        );
-        return audioUrl ? audioUrl.url : data.urls[0].url;
+    }
+    
+    // 通用解析 - 尝试常见字段
+    const possibleUrls = [
+      data.url,
+      data.link, 
+      data.download_url,
+      data.audio_url,
+      data.mp3_url,
+      data.stream_url
+    ];
+    
+    for (const url of possibleUrls) {
+      if (url && typeof url === 'string' && url.startsWith('http')) {
+        console.log('✅ 找到下载链接:', url);
+        return url;
       }
     }
     
