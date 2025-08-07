@@ -1,1 +1,1 @@
-export const tasks = new Map<string, { status: string; file_url?: string; progress?: number; error?: string }>(); 
+export const tasks = new Map<string, { status: string; file_url?: string; progress?: number; error?: string; audioStream?: any; audioBuffer?: Buffer; title?: string }>(); 

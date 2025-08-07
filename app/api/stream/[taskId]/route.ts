@@ -1,62 +1,97 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tasks } from '@/lib/tasks';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
 
-// 专门用于音频流播放的轻量级端点
+// 专门用于音频流播放的端点
 export async function GET(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
   
-  // 快速检查任务状态（避免不必要的文件系统操作）
+  console.log('🎵 请求音频流:', taskId);
+  
+  // 检查任务状态
   const task = tasks.get(taskId);
   if (!task || task.status !== 'finished') {
-    return new NextResponse('Not Found', { status: 404 });
+    console.log('❌ 任务未完成或不存在:', task?.status);
+    return new NextResponse('Audio not ready', { status: 404 });
   }
   
-  const tempDir = os.tmpdir();
-  const filePath = path.join(tempDir, `${taskId}.mp3`);
+  // 环境检测
+  const isVercel = process.env.VERCEL === '1';
   
-  // 快速存在性检查
-  try {
-    const stats = fs.statSync(filePath);
-    const fileSize = stats.size;
-    const lastModified = stats.mtime.toUTCString();
-    
-    // 检查If-None-Match/If-Modified-Since头（304缓存）
-    const ifModifiedSince = req.headers.get('if-modified-since');
-    const ifNoneMatch = req.headers.get('if-none-match');
-    const etag = `"${stats.mtime.getTime()}-${fileSize}"`;
-    
-    if (ifNoneMatch === etag || ifModifiedSince === lastModified) {
-      return new NextResponse(null, {
-        status: 304,
-        headers: {
-          'ETag': etag,
-          'Last-Modified': lastModified,
-          'Cache-Control': 'public, max-age=86400',
-        },
-      });
+  if (isVercel) {
+    // Vercel 环境：使用音频流
+    if (!task.audioStream) {
+      console.log('❌ Vercel 环境音频流不存在');
+      return new NextResponse('Audio stream not found', { status: 404 });
     }
     
-    // 流式响应
-    const stream = fs.createReadStream(filePath);
+    try {
+      console.log('✅ 返回 Vercel 音频流');
+      return new NextResponse(task.audioStream as any, {
+        status: 200,
+        headers: {
+          'Content-Type': 'audio/mpeg',
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
+        },
+      });
+    } catch (error) {
+      console.error('❌ 返回音频流失败:', error);
+      return new NextResponse('Failed to stream audio', { status: 500 });
+    }
+  } else {
+    // 本地环境：使用音频缓冲区
+    if (!task.audioBuffer) {
+      console.log('❌ 本地环境音频缓冲区不存在');
+      return new NextResponse('Audio buffer not found', { status: 404 });
+    }
     
-    return new NextResponse(stream as any, {
-      status: 200,
-      headers: {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': fileSize.toString(),
-        'Accept-Ranges': 'bytes',
-        'ETag': etag,
-        'Last-Modified': lastModified,
-        'Cache-Control': 'public, max-age=86400, immutable',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
-      },
-    });
-    
-  } catch (error) {
-    return new NextResponse('File not found', { status: 404 });
+    try {
+      const buffer = task.audioBuffer;
+      console.log(`✅ 返回音频缓冲区，大小: ${(buffer.length / 1024 / 1024).toFixed(2)}MB`);
+      
+      // 处理 Range 请求 (支持音频播放器的跳转)
+      const range = req.headers.get('range');
+      
+      if (range) {
+        console.log('📊 处理 Range 请求:', range);
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : buffer.length - 1;
+        const chunkSize = (end - start) + 1;
+        
+        const chunk = buffer.subarray(start, end + 1);
+        
+        return new NextResponse(chunk, {
+          status: 206, // Partial Content
+          headers: {
+            'Content-Type': 'audio/mpeg',
+            'Content-Range': `bytes ${start}-${end}/${buffer.length}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunkSize.toString(),
+            'Cache-Control': 'public, max-age=3600',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
+          },
+        });
+      } else {
+        // 完整文件响应
+        return new NextResponse(buffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': buffer.length.toString(),
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'public, max-age=3600',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
+          },
+        });
+      }
+    } catch (error) {
+      console.error('❌ 返回音频缓冲区失败:', error);
+      return new NextResponse('Failed to return audio', { status: 500 });
+    }
   }
 }
