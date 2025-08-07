@@ -93,6 +93,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     {
       name: '9xbuddy API',
       url: `https://9xbuddy.org/api/ajaxSearch?q=${encodeURIComponent(url)}&lang=en`,
+      method: 'GET' as const,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json',
@@ -102,7 +103,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     {
       name: 'Y2mate API',
       url: 'https://www.y2mate.com/mates/analyzeV2/ajax',
-      method: 'POST',
+      method: 'POST' as const,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -119,6 +120,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     {
       name: 'SaveFrom API',
       url: `https://worker-savefrom.savefrom.net/extract?url=${encodeURIComponent(url)}&lang=en`,
+      method: 'GET' as const,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json',
@@ -142,14 +144,14 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
       if (service.method === 'POST') {
         response = await fetch(service.url, {
           method: 'POST',
-          headers: service.headers,
+          headers: service.headers as unknown as Record<string, string>,
           body: service.body,
           signal: controller.signal
         });
       } else {
         response = await fetch(service.url, {
           method: 'GET',
-          headers: service.headers,
+          headers: service.headers as unknown as Record<string, string>,
           signal: controller.signal
         });
       }
