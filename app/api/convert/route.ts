@@ -78,22 +78,31 @@ export async function POST(req: NextRequest) {
       
       // 异步调用，不等待响应
       console.log('📡 发起fetch请求...');
-      fetch(fullUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task_id, url })
-      }).then(response => {
-        console.log('✅ 后台处理触发响应:', response.status);
-        if (!response.ok) {
-          response.text().then(errorText => {
-            console.error('❌ 后台处理触发失败:', errorText);
+      
+      // 使用立即执行的异步函数确保错误处理
+      (async () => {
+        try {
+          const fetchResponse = await fetch(fullUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId: task_id, url })
           });
+          
+          console.log('✅ 后台处理触发响应:', fetchResponse.status);
+          
+          if (!fetchResponse.ok) {
+            const errorText = await fetchResponse.text();
+            console.error('❌ 后台处理触发失败:', errorText);
+          } else {
+            const responseData = await fetchResponse.json();
+            console.log('✅ 后台处理响应数据:', responseData);
+          }
+        } catch (error) {
+          console.error('❌ 后台处理触发异常:', error);
+          console.error('❌ 错误详情:', (error as Error).message);
+          console.error('❌ 错误名称:', (error as Error).name);
         }
-      }).catch(error => {
-        console.error('❌ 后台处理触发异常:', error);
-        console.error('❌ 错误详情:', error.message);
-        console.error('❌ 错误名称:', error.name);
-      });
+      })();
       
       console.log('✅ 后台处理已外部触发');
       
