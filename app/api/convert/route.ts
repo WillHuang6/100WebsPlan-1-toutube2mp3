@@ -66,45 +66,23 @@ export async function POST(req: NextRequest) {
     console.log('  - NEXT_PUBLIC_VERCEL_URL:', process.env.NEXT_PUBLIC_VERCEL_URL);
     
     try {
-      // 使用外部HTTP调用来触发后台处理，确保不会被当前函数超时影响
-      console.log('🚀 通过外部调用启动后台处理...');
+      // 使用setTimeout来异步启动后台处理，避免HTTP调用问题
+      console.log('🚀 启动本地异步后台处理...');
       
-      // 优先使用生产域名，避免预览部署的问题
-      const processUrl = 'https://ytb2mp3.site';
-      
-      const fullUrl = `${processUrl}/api/process-task`;
-      console.log('🌐 目标URL:', fullUrl);
-      console.log('📦 请求数据:', { taskId: task_id, url });
-      
-      // 异步调用，不等待响应
-      console.log('📡 发起fetch请求...');
-      
-      // 使用立即执行的异步函数确保错误处理
-      (async () => {
+      setTimeout(async () => {
         try {
-          const fetchResponse = await fetch(fullUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId: task_id, url })
-          });
-          
-          console.log('✅ 后台处理触发响应:', fetchResponse.status);
-          
-          if (!fetchResponse.ok) {
-            const errorText = await fetchResponse.text();
-            console.error('❌ 后台处理触发失败:', errorText);
-          } else {
-            const responseData = await fetchResponse.json();
-            console.log('✅ 后台处理响应数据:', responseData);
-          }
+          console.log('⚡ 延迟后台处理开始...');
+          await processTaskDirectly(task_id, url);
         } catch (error) {
-          console.error('❌ 后台处理触发异常:', error);
-          console.error('❌ 错误详情:', (error as Error).message);
-          console.error('❌ 错误名称:', (error as Error).name);
+          console.error('💥 延迟后台处理失败:', error);
+          await taskManager.update(task_id, {
+            status: 'error',
+            error: `后台处理失败: ${(error as Error).message}`
+          });
         }
-      })();
+      }, 100); // 100ms延迟，让convert函数先返回
       
-      console.log('✅ 后台处理已外部触发');
+      console.log('✅ 本地异步处理已启动');
       
     } catch (error) {
       console.error('❌ 启动后台处理失败:', error);
@@ -301,6 +279,173 @@ async function processWithAPIBackground(taskId: string, url: string, videoId: st
 
   } catch (error) {
     console.error('❌ 后台API处理失败:', error);
+    
+    const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    
+    await taskManager.update(taskId, {
+      status: 'error',
+      error: `API处理失败: ${(error as Error).message}\n处理时间: ${processingTime}秒`
+    });
+  }
+}
+
+// 直接后台处理函数 - 避免HTTP调用
+async function processTaskDirectly(taskId: string, url: string) {
+  const startTime = Date.now();
+  const cacheKey = getCacheKey(url);
+  
+  try {
+    console.log('🎯 直接后台处理开始 - 任务ID:', taskId);
+    console.log('📋 处理URL:', url);
+    console.log('🔗 缓存键:', cacheKey);
+    
+    // 检查缓存
+    const cached = urlCache.get(cacheKey);
+    if (cached && Date.now() - cached.created_at < CACHE_DURATION) {
+      console.log('🚀 缓存命中:', url);
+      await taskManager.update(taskId, { 
+        status: 'finished', 
+        file_url: cached.file_url, 
+        progress: 100 
+      });
+      return;
+    }
+
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+      await taskManager.update(taskId, { 
+        status: 'error', 
+        error: '无法提取视频ID' 
+      });
+      return;
+    }
+
+    // 更新为处理中
+    await taskManager.update(taskId, { status: 'processing', progress: 10 });
+
+    // 环境检测
+    const isVercel = process.env.VERCEL === '1';
+    console.log('🌐 直接处理环境:', isVercel ? 'Vercel' : '本地');
+
+    if (isVercel) {
+      await processWithAPIDirectly(taskId, url, videoId, cacheKey, startTime);
+    } else {
+      // 本地环境暂不实现
+      await taskManager.update(taskId, {
+        status: 'error',
+        error: '本地yt-dlp处理暂未实现'
+      });
+    }
+
+  } catch (error) {
+    console.error('💥 直接后台处理失败:', error);
+    
+    const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    
+    await taskManager.update(taskId, {
+      status: 'error',
+      error: `直接处理失败: ${(error as Error).message}\n处理时间: ${processingTime}秒`
+    });
+  }
+}
+
+// 使用API的直接处理（Vercel环境）
+async function processWithAPIDirectly(taskId: string, url: string, videoId: string, cacheKey: string, startTime: number) {
+  console.log('🎯 直接API处理 - 视频ID:', videoId);
+  
+  // 检查API Key
+  if (!process.env.RAPIDAPI_KEY) {
+    await taskManager.update(taskId, {
+      status: 'error',
+      error: '配置错误：缺少API密钥'
+    });
+    return;
+  }
+
+  await taskManager.update(taskId, { status: 'processing', progress: 20 });
+
+  try {
+    console.log('📡 直接调用RapidAPI...');
+    console.log('🔑 API Key存在:', !!process.env.RAPIDAPI_KEY);
+    console.log('🔍 API Key前缀:', process.env.RAPIDAPI_KEY?.substring(0, 8));
+    
+    const apiUrl = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
+    console.log('🌐 API URL:', apiUrl);
+    
+    const fetchStartTime = Date.now();
+    console.log('📡 开始fetch请求...');
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
+        'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    const fetchDuration = Date.now() - fetchStartTime;
+    console.log(`📡 直接API响应状态: ${response.status}, 用时: ${fetchDuration}ms`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API错误: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('📋 直接API响应数据:', JSON.stringify(data, null, 2));
+
+    // 解析下载链接
+    let downloadUrl = null;
+    if (data.status === 'ok' || data.status === 'success') {
+      downloadUrl = data.link || data.url || data.download_url;
+    }
+
+    if (!downloadUrl) {
+      throw new Error('无法从API响应中提取下载链接');
+    }
+
+    console.log('✅ 直接获取到下载链接');
+    await taskManager.update(taskId, { status: 'processing', progress: 60 });
+
+    // 下载音频文件
+    console.log('📥 直接下载音频...');
+    console.log('🔗 下载链接:', downloadUrl);
+    
+    const downloadStartTime = Date.now();
+    const audioResponse = await fetch(downloadUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    
+    const downloadDuration = Date.now() - downloadStartTime;
+    console.log(`📥 下载响应状态: ${audioResponse.status}, 用时: ${downloadDuration}ms`);
+
+    if (!audioResponse.ok) {
+      throw new Error(`下载失败: ${audioResponse.status}`);
+    }
+
+    const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
+    console.log(`✅ 直接音频下载完成，大小: ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+
+    await taskManager.update(taskId, { status: 'processing', progress: 90 });
+
+    // 完成任务
+    const file_url = `/api/download/${taskId}`;
+    urlCache.set(cacheKey, { file_url, created_at: Date.now() });
+
+    await taskManager.update(taskId, {
+      status: 'finished',
+      file_url,
+      progress: 100,
+      audioBuffer: audioBuffer,
+      title: 'YouTube Audio'
+    });
+
+    const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`🎉 直接处理完成! 用时: ${processingTime}秒`);
+
+  } catch (error) {
+    console.error('❌ 直接API处理失败:', error);
     
     const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
     
