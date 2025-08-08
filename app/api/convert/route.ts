@@ -220,11 +220,16 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       console.log('⏰ API调用超时，终止请求');
+      console.log('🚨 超时详情: 5秒内没有收到API响应');
       controller.abort();
-    }, 5000);
+    }, 8000); // 增加到8秒
     
     const apiUrl = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
     console.log('🌐 请求URL:', apiUrl);
+    console.log('🔑 使用API Key:', process.env.RAPIDAPI_KEY?.substring(0, 8) + '...');
+    
+    console.log('📡 开始发送API请求...');
+    const startFetch = Date.now();
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -235,6 +240,9 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
       },
       signal: controller.signal
     });
+    
+    const fetchTime = Date.now() - startFetch;
+    console.log(`📡 API请求完成，用时: ${fetchTime}ms`);
     
     clearTimeout(timeout);
     
@@ -299,23 +307,42 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     console.error('💥 API调用过程出错:', error);
     console.error('💥 错误详情:', (error as Error).stack);
     
+    // 分析错误类型
+    let errorType = '未知错误';
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        errorType = 'API调用超时';
+        console.log('🚨 确认: API调用超时 - 8秒内没有响应');
+      } else if (error.message.includes('fetch')) {
+        errorType = '网络连接错误';
+      } else if (error.message.includes('API错误')) {
+        errorType = 'API服务错误';
+      }
+    }
+    
     const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
     
     // 详细错误信息包含在任务状态中，用户可以看到
     const errorMessage = `处理失败详情:
+错误类型: ${errorType}
 错误: ${(error as Error).message}
 处理时间: ${processingTime}秒
 环境: Vercel
 任务ID: ${task_id}
 视频ID: ${videoId}
-时间: ${new Date().toISOString()}`;
+时间: ${new Date().toISOString()}
+
+如果是API超时，可能的原因:
+1. RapidAPI服务器响应慢
+2. 网络连接问题
+3. 视频处理时间过长`;
 
     await taskManager.update(task_id, {
       status: 'error',
       error: errorMessage
     });
     
-    console.log('❌ 已更新任务为错误状态，详细信息:', errorMessage);
+    console.log('❌ 已更新任务为错误状态，错误类型:', errorType);
   }
 }
 
