@@ -59,56 +59,40 @@ export async function POST(req: NextRequest) {
     console.log('🚀 任务创建:', task_id);
     console.log('📋 目标URL:', url);
     
-    // 立即触发后台处理，不等待结果
-    console.log('⚡ 触发后台处理...');
-    console.log('🌍 环境变量检查:');
-    console.log('  - VERCEL_URL:', process.env.VERCEL_URL);
-    console.log('  - NEXT_PUBLIC_VERCEL_URL:', process.env.NEXT_PUBLIC_VERCEL_URL);
+    // 推送到队列，由外部worker处理
+    console.log('📋 推送任务到队列...');
     
     try {
-      // 使用setTimeout来异步启动后台处理，避免HTTP调用问题
-      console.log('🚀 启动本地异步后台处理...');
+      // 推送到Redis队列
+      const { kv } = await import('@/lib/kv');
+      await kv.lpush('youtube_queue', JSON.stringify({ 
+        taskId: task_id, 
+        url: url,
+        createdAt: Date.now()
+      }));
       
-      setTimeout(async () => {
-        try {
-          console.log('⚡ 延迟后台处理开始...');
-          await processTaskDirectly(task_id, url);
-        } catch (error) {
-          console.error('💥 延迟后台处理失败:', error);
-          await taskManager.update(task_id, {
-            status: 'error',
-            error: `后台处理失败: ${(error as Error).message}`
-          });
-        }
-      }, 100); // 100ms延迟，让convert函数先返回
+      console.log('✅ 任务已推送到队列');
       
-      console.log('✅ 本地异步处理已启动');
+      // 立即返回，让用户轮询状态
+      return NextResponse.json({ 
+        task_id, 
+        status: 'queued',
+        message: '任务已提交到处理队列，请等待处理...',
+        estimated_time: '通常需要1-5分钟'
+      });
       
     } catch (error) {
-      console.error('❌ 启动后台处理失败:', error);
+      console.error('❌ 队列推送失败:', error);
       await taskManager.update(task_id, {
         status: 'error',
-        error: '无法启动处理任务，请稍后重试'
+        error: `队列推送失败: ${(error as Error).message}`
       });
       return NextResponse.json({ 
-        error: 'Failed to start processing',
+        error: 'Failed to queue task',
+        details: (error as Error).message,
         task_id 
       }, { status: 500 });
     }
-    
-    // 定期清理过期缓存
-    cleanupExpiredCache();
-    
-    const responseTime = Date.now() - startTime;
-    console.log(`⚡ API响应时间: ${responseTime}ms`);
-    
-    // 立即返回任务ID和状态，不等待处理完成
-    return NextResponse.json({ 
-      task_id, 
-      status: 'queued',
-      message: '任务已创建，正在后台处理...',
-      estimated_time: '通常需要1-5分钟'
-    });
     
   } catch (error) {
     console.error('💥 convert API 错误:', error);
