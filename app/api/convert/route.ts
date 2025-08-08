@@ -61,6 +61,9 @@ export async function POST(req: NextRequest) {
     
     // 立即触发后台处理，不等待结果
     console.log('⚡ 触发后台处理...');
+    console.log('🌍 环境变量检查:');
+    console.log('  - VERCEL_URL:', process.env.VERCEL_URL);
+    console.log('  - NEXT_PUBLIC_VERCEL_URL:', process.env.NEXT_PUBLIC_VERCEL_URL);
     
     try {
       // 使用外部HTTP调用来触发后台处理，确保不会被当前函数超时影响
@@ -70,8 +73,13 @@ export async function POST(req: NextRequest) {
         `https://${process.env.VERCEL_URL}` : 
         `https://${process.env.NEXT_PUBLIC_VERCEL_URL || 'ytb2mp3.site'}`;
       
+      const fullUrl = `${processUrl}/api/process-task`;
+      console.log('🌐 目标URL:', fullUrl);
+      console.log('📦 请求数据:', { taskId: task_id, url });
+      
       // 异步调用，不等待响应
-      fetch(`${processUrl}/api/process-task`, {
+      console.log('📡 发起fetch请求...');
+      fetch(fullUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskId: task_id, url })
@@ -84,6 +92,8 @@ export async function POST(req: NextRequest) {
         }
       }).catch(error => {
         console.error('❌ 后台处理触发异常:', error);
+        console.error('❌ 错误详情:', error.message);
+        console.error('❌ 错误名称:', error.name);
       });
       
       console.log('✅ 后台处理已外部触发');
