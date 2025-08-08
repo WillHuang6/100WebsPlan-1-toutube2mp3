@@ -33,17 +33,32 @@ export default function Home() {
         body: JSON.stringify({ url }),
       });
       
-      const result = await convertRes.json();
-      
       if (!convertRes.ok) {
-        throw new Error(result.details || result.error || 'Conversion failed');
+        const errorResult = await convertRes.json();
+        throw new Error(errorResult.details || errorResult.error || 'Conversion failed');
       }
       
-      // 转换成功
-      setStatus('finished');
-      setFileUrl(result.file_url);
-      setTitle(result.title);
-      setProcessingTime(result.processing_time);
+      // 检查是否是直接下载响应
+      const contentType = convertRes.headers.get('Content-Type');
+      if (contentType === 'audio/mpeg') {
+        // 直接下载模式
+        const blob = await convertRes.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        const titleHeader = convertRes.headers.get('X-File-Title');
+        const processingTimeHeader = convertRes.headers.get('X-Processing-Time');
+        
+        setStatus('finished');
+        setFileUrl(downloadUrl);
+        setTitle(titleHeader ? decodeURIComponent(titleHeader) : 'YouTube Audio');
+        setProcessingTime(processingTimeHeader || '未知');
+      } else {
+        // JSON 响应模式（备用）
+        const result = await convertRes.json();
+        setStatus('finished');
+        setFileUrl(result.file_url);
+        setTitle(result.title);
+        setProcessingTime(result.processing_time);
+      }
       
     } catch (err) {
       setError((err as Error).message);
@@ -160,7 +175,7 @@ export default function Home() {
                 </div>
                 
                 <p className="text-sm text-gray-500 text-center mt-4">
-                  File expires in 1 hour • Click to download your MP3 file
+                  Download ready • Click to download your MP3 file
                 </p>
               </div>
             )}
