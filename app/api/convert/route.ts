@@ -63,13 +63,16 @@ export async function POST(req: NextRequest) {
     console.log('⚡ 触发后台处理...');
     
     try {
-      // 直接在后台启动处理，不通过HTTP调用
-      console.log('🚀 直接启动后台处理...');
+      // 使用setImmediate异步启动后台处理，避免阻塞响应
+      console.log('🚀 异步启动后台处理...');
       
-      // 导入并直接调用后台处理函数
-      processTaskInBackground(task_id, url);
+      setImmediate(() => {
+        processTaskInBackground(task_id, url).catch(error => {
+          console.error('💥 后台处理异常:', error);
+        });
+      });
       
-      console.log('✅ 后台处理已启动');
+      console.log('✅ 后台处理已异步启动');
       
     } catch (error) {
       console.error('❌ 启动后台处理失败:', error);
