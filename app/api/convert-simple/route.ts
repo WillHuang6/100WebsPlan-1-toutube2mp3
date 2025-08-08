@@ -112,24 +112,42 @@ export async function POST(req: NextRequest) {
     }
     
     const data = await response.json();
-    console.log('📋 API数据:', { status: data.status, title: data.title });
+    console.log('📋 API数据:', { 
+      status: data.status, 
+      title: data.title, 
+      progress: data.progress,
+      hasLink: !!data.link,
+      hasUrl: !!data.url,
+      hasDownloadUrl: !!data.download_url
+    });
     
     // 2. 获取下载链接
     const downloadUrl = data.link || data.url || data.download_url;
     if (!downloadUrl) {
+      console.log('❌ 完整API响应:', JSON.stringify(data, null, 2));
       throw new Error('No download URL in API response');
     }
     
     // 3. 下载音频
     console.log('📥 下载音频...');
+    console.log('🔗 下载链接:', downloadUrl);
     const downloadStartTime = Date.now();
     
     const audioResponse = await fetch(downloadUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://youtube-mp36.p.rapidapi.com/',
+        'Accept': 'audio/mpeg, audio/*'
+      }
     });
     
+    console.log('📥 下载响应状态:', audioResponse.status);
+    
     if (!audioResponse.ok) {
-      throw new Error(`Download failed: ${audioResponse.status}`);
+      // 获取更详细的错误信息
+      const errorText = await audioResponse.text();
+      console.log('❌ 下载错误详情:', errorText);
+      throw new Error(`Download failed: ${audioResponse.status} - ${errorText.substring(0, 200)}`);
     }
     
     const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
