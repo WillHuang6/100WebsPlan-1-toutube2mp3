@@ -64,10 +64,19 @@ export async function POST(req: NextRequest) {
     
     try {
       // 调用后台处理API，不等待响应
-      fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/process-task`, {
+      const processUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+      console.log('🌐 后台处理URL:', `${processUrl}/api/process-task`);
+      console.log('📋 发送数据:', JSON.stringify({ taskId: task_id, url }));
+      
+      fetch(`${processUrl}/api/process-task`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskId: task_id, url })
+      }).then(response => {
+        console.log('✅ 后台处理触发响应:', response.status);
+        if (!response.ok) {
+          console.error('❌ 后台处理响应异常:', response.statusText);
+        }
       }).catch(error => {
         console.error('❌ 后台处理触发失败:', error);
         // 如果后台处理触发失败，更新任务状态
