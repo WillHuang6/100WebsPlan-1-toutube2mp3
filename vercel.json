@@ -17,6 +17,9 @@
     },
     "app/api/test-rapidapi/route.ts": {
       "maxDuration": 120
+    },
+    "app/api/convert-simple/route.ts": {
+      "maxDuration": 300
     }
   },
   "headers": [
