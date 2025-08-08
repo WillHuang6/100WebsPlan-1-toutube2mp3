@@ -18,30 +18,47 @@ function extractVideoId(url: string): string | null {
 
 // 后台任务处理API
 export async function POST(req: NextRequest) {
+  const requestStartTime = Date.now();
+  
   try {
+    console.log('🔄 process-task API 收到请求');
+    
     const { taskId, url } = await req.json();
     
     if (!taskId || !url) {
+      console.log('❌ 缺少必需参数:', { taskId: !!taskId, url: !!url });
       return NextResponse.json({ error: 'Missing taskId or url' }, { status: 400 });
     }
 
     console.log('🔄 开始后台处理任务:', taskId);
     console.log('📋 目标URL:', url);
 
-    // 立即返回，开始异步处理
-    processTaskInBackground(taskId, url);
+    // 立即启动异步处理，不等待结果
+    console.log('🚀 启动异步后台处理...');
+    
+    processTaskInBackground(taskId, url).catch(error => {
+      console.error('💥 异步后台处理异常:', error);
+    });
+    
+    const responseTime = Date.now() - requestStartTime;
+    console.log(`✅ process-task API响应时间: ${responseTime}ms`);
     
     return NextResponse.json({ 
       success: true, 
       message: 'Background processing started',
-      taskId 
+      taskId,
+      responseTime: `${responseTime}ms`
     });
 
   } catch (error) {
+    const responseTime = Date.now() - requestStartTime;
     console.error('❌ 后台处理启动失败:', error);
+    console.error('❌ 响应时间:', `${responseTime}ms`);
+    
     return NextResponse.json({ 
       error: 'Failed to start background processing',
-      details: (error as Error).message 
+      details: (error as Error).message,
+      responseTime: `${responseTime}ms`
     }, { status: 500 });
   }
 }
@@ -53,6 +70,8 @@ async function processTaskInBackground(taskId: string, url: string) {
   
   try {
     console.log('🎯 后台处理开始 - 任务ID:', taskId);
+    console.log('📋 处理URL:', url);
+    console.log('🔗 缓存键:', cacheKey);
     
     // 检查缓存
     const cached = urlCache.get(cacheKey);
@@ -118,9 +137,15 @@ async function processWithAPIBackground(taskId: string, url: string, videoId: st
 
   try {
     console.log('📡 后台调用RapidAPI...');
+    console.log('🔑 API Key存在:', !!process.env.RAPIDAPI_KEY);
+    console.log('🔍 API Key前缀:', process.env.RAPIDAPI_KEY?.substring(0, 8));
     
     // 不设置超时限制，让它慢慢处理
     const apiUrl = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
+    console.log('🌐 API URL:', apiUrl);
+    
+    const fetchStartTime = Date.now();
+    console.log('📡 开始fetch请求...');
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -132,7 +157,8 @@ async function processWithAPIBackground(taskId: string, url: string, videoId: st
       // 注意：这里没有signal: controller.signal，让它自然完成
     });
 
-    console.log('📡 后台API响应状态:', response.status);
+    const fetchDuration = Date.now() - fetchStartTime;
+    console.log(`📡 后台API响应状态: ${response.status}, 用时: ${fetchDuration}ms`);
 
     if (!response.ok) {
       const errorText = await response.text();
