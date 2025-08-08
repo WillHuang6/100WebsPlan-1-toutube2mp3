@@ -198,6 +198,20 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   console.log('- REDIS_URL存在:', !!process.env.REDIS_URL);
   console.log('- RAPIDAPI_KEY存在:', !!process.env.RAPIDAPI_KEY);
   
+  // 如果没有API Key，直接返回友好错误信息
+  if (!process.env.RAPIDAPI_KEY) {
+    console.log('❌ RAPIDAPI_KEY 环境变量未配置');
+    
+    const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    await taskManager.update(task_id, {
+      status: 'error',
+      error: `配置错误：缺少API密钥。请在Vercel Dashboard中配置RAPIDAPI_KEY环境变量。\n处理时间: ${processingTime}秒`
+    });
+    
+    console.log('✅ 已返回配置错误信息');
+    return;
+  }
+  
   // 尝试第一个简单的API调用
   try {
     console.log('🔄 尝试RapidAPI调用...');
