@@ -13,28 +13,27 @@ export async function GET(
     
     console.log('📥 下载请求:', taskId);
     
-    // 确保获取全局缓存
-    const globalThis = global as any;
-    console.log('🔍 全局缓存存在:', !!globalThis.simpleCache);
+    // 从Redis获取音频数据
+    const { getRedisClient } = await import('@/lib/kv');
+    const redis = await getRedisClient();
     
-    if (!globalThis.simpleCache) {
-      console.log('❌ 全局缓存未找到');
-      return NextResponse.json({ error: 'Cache not initialized' }, { status: 500 });
-    }
+    console.log('🔍 从Redis读取音频数据...');
+    const audioBuffer = await redis.getBuffer(`audio:${taskId}`);
+    const title = await redis.get(`title:${taskId}`);
     
-    const cached = globalThis.simpleCache.get(taskId);
-    console.log('🔍 任务缓存存在:', !!cached);
-    console.log('🔍 缓存大小:', globalThis.simpleCache.size);
+    console.log('🔍 Redis结果:');
+    console.log('  - 音频数据存在:', !!audioBuffer);
+    console.log('  - 标题存在:', !!title);
     
-    if (!cached) {
-      // 列出所有缓存的key用于调试
-      const allKeys = Array.from(globalThis.simpleCache.keys());
-      console.log('🔍 所有缓存键:', allKeys);
+    if (!audioBuffer || !title) {
+      console.log('❌ 文件未找到或已过期');
       return NextResponse.json({ 
         error: 'File not found or expired',
-        debug: { requestedId: taskId, availableKeys: allKeys }
+        taskId: taskId
       }, { status: 404 });
     }
+    
+    const cached = { audioBuffer, title };
     
     console.log(`📥 下载文件: ${taskId}, 大小: ${(cached.audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
     

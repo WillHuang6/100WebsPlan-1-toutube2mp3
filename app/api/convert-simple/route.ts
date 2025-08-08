@@ -155,28 +155,29 @@ export async function POST(req: NextRequest) {
     
     console.log(`📥 下载完成: ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB, 用时: ${downloadDuration}ms`);
     
-    // 4. 存储到缓存
+    // 4. 存储到Redis
     const title = data.title || 'YouTube Audio';
     const taskId = uuidv4();
     
+    console.log('💾 存储到Redis...');
+    const { getRedisClient } = await import('@/lib/kv');
+    const redis = await getRedisClient();
+    
+    // 存储音频数据到Redis (24小时过期)
+    await redis.setEx(`audio:${taskId}`, 86400, audioBuffer);
+    await redis.setEx(`title:${taskId}`, 86400, title);
+    
+    // 缓存URL映射
     simpleCache.set(cacheKey, {
       audioBuffer,
       title,
       createdAt: Date.now()
     });
     
-    // 临时存储用于下载
-    simpleCache.set(taskId, {
-      audioBuffer,
-      title,
-      createdAt: Date.now()
-    });
-    
-    console.log('💾 缓存已存储:');
-    console.log('  - 缓存键:', cacheKey);
+    console.log('💾 存储完成:');
     console.log('  - 任务ID:', taskId);
-    console.log('  - 缓存大小:', simpleCache.size);
     console.log('  - 音频大小:', (audioBuffer.length / 1024 / 1024).toFixed(2), 'MB');
+    console.log('  - 标题:', title);
     
     // 清理过期缓存
     cleanupCache();
