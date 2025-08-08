@@ -64,8 +64,9 @@ export async function POST(req: NextRequest) {
     
     try {
       // 推送到Redis队列
-      const { kv } = await import('@/lib/kv');
-      await kv.lpush('youtube_queue', JSON.stringify({ 
+      const { getRedisClient } = await import('@/lib/kv');
+      const redis = await getRedisClient();
+      await redis.lPush('youtube_queue', JSON.stringify({ 
         taskId: task_id, 
         url: url,
         createdAt: Date.now()

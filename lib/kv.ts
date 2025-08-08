@@ -91,3 +91,6 @@ export class TaskStore {
     return exists === 1;
   }
 }
+
+// 导出getRedisClient函数供其他模块使用
+export { getRedisClient };
