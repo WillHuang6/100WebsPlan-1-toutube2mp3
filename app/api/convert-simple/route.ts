@@ -172,6 +172,12 @@ export async function POST(req: NextRequest) {
       createdAt: Date.now()
     });
     
+    console.log('💾 缓存已存储:');
+    console.log('  - 缓存键:', cacheKey);
+    console.log('  - 任务ID:', taskId);
+    console.log('  - 缓存大小:', simpleCache.size);
+    console.log('  - 音频大小:', (audioBuffer.length / 1024 / 1024).toFixed(2), 'MB');
+    
     // 清理过期缓存
     cleanupCache();
     

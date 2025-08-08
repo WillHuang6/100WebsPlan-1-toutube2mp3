@@ -1,12 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 引用同一个缓存
-declare const simpleCache: Map<string, { 
-  audioBuffer: Buffer; 
-  title: string; 
-  createdAt: number; 
-}>;
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
@@ -18,16 +11,29 @@ export async function GET(
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
     }
     
-    // 从全局对象获取缓存（简单的跨模块共享）
+    console.log('📥 下载请求:', taskId);
+    
+    // 确保获取全局缓存
     const globalThis = global as any;
+    console.log('🔍 全局缓存存在:', !!globalThis.simpleCache);
+    
     if (!globalThis.simpleCache) {
-      return NextResponse.json({ error: 'File not found or expired' }, { status: 404 });
+      console.log('❌ 全局缓存未找到');
+      return NextResponse.json({ error: 'Cache not initialized' }, { status: 500 });
     }
     
     const cached = globalThis.simpleCache.get(taskId);
+    console.log('🔍 任务缓存存在:', !!cached);
+    console.log('🔍 缓存大小:', globalThis.simpleCache.size);
     
     if (!cached) {
-      return NextResponse.json({ error: 'File not found or expired' }, { status: 404 });
+      // 列出所有缓存的key用于调试
+      const allKeys = Array.from(globalThis.simpleCache.keys());
+      console.log('🔍 所有缓存键:', allKeys);
+      return NextResponse.json({ 
+        error: 'File not found or expired',
+        debug: { requestedId: taskId, availableKeys: allKeys }
+      }, { status: 404 });
     }
     
     console.log(`📥 下载文件: ${taskId}, 大小: ${(cached.audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
