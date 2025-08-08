@@ -160,7 +160,7 @@ export default function Home() {
                 </div>
                 
                 <p className="text-sm text-gray-500 text-center mt-4">
-                  File expires in 24 hours • Click to download your MP3 file
+                  File expires in 3 hours • Click to download your MP3 file
                 </p>
               </div>
             )}

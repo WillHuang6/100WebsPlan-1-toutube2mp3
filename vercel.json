@@ -8,6 +8,9 @@
     },
     "app/api/test-rapidapi/route.ts": {
       "maxDuration": 120
+    },
+    "app/api/cleanup-redis/route.ts": {
+      "maxDuration": 60
     }
   },
   "headers": [

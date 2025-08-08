@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     
     console.log(`📥 下载完成: ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB, 用时: ${downloadDuration}ms`);
     
-    // 4. 存储到Redis
+    // 4. 存储到Redis with memory optimization
     const title = data.title || 'YouTube Audio';
     const taskId = uuidv4();
     
@@ -107,10 +107,31 @@ export async function POST(req: NextRequest) {
     const { getRedisClient } = await import('@/lib/kv');
     const redis = await getRedisClient();
     
-    // 存储音频数据到Redis (24小时过期) - 转换为base64存储
+    // 清理过期的音频文件以释放内存
+    try {
+      const keys = await redis.keys('audio:*');
+      const now = Date.now();
+      const expiredKeys = [];
+      
+      for (const key of keys) {
+        const ttl = await redis.ttl(key);
+        if (ttl < 0 || ttl < 3600) { // 删除已过期或1小时内过期的
+          expiredKeys.push(key, key.replace('audio:', 'title:'));
+        }
+      }
+      
+      if (expiredKeys.length > 0) {
+        await redis.del(...expiredKeys);
+        console.log(`🧹 清理了 ${expiredKeys.length / 2} 个过期音频文件`);
+      }
+    } catch (cleanupError) {
+      console.warn('清理过期文件时出错:', cleanupError);
+    }
+    
+    // 存储音频数据到Redis (缩短过期时间到3小时)
     const audioBase64 = audioBuffer.toString('base64');
-    await redis.setEx(`audio:${taskId}`, 86400, audioBase64);
-    await redis.setEx(`title:${taskId}`, 86400, title);
+    await redis.setEx(`audio:${taskId}`, 10800, audioBase64); // 3小时 = 10800秒
+    await redis.setEx(`title:${taskId}`, 10800, title);
     
     console.log('💾 存储完成:');
     console.log('  - 任务ID:', taskId);
