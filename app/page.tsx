@@ -8,11 +8,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function Home() {
   const [url, setUrl] = useState('');
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [status, setStatus] = useState<'idle' | 'queued' | 'converting' | 'finished' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'converting' | 'finished' | 'error'>('idle');
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
+  const [title, setTitle] = useState<string>('');
+  const [processingTime, setProcessingTime] = useState<string>('');
 
   const handleConvert = async () => {
     if (!url.trim()) {
@@ -20,79 +20,37 @@ export default function Home() {
       return;
     }
 
-    setStatus('queued');
+    setStatus('converting');
     setError(null);
     setFileUrl(null);
+    setTitle('');
+    setProcessingTime('');
     
     try {
       const convertRes = await fetch('/api/convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, format: 'mp3' }),
+        body: JSON.stringify({ url }),
       });
-      if (!convertRes.ok) throw new Error((await convertRes.json()).error);
-      const { task_id, status: initialStatus, message } = await convertRes.json();
-      setTaskId(task_id);
       
-      // 如果立即完成（缓存命中），直接设置为完成状态
-      if (initialStatus === 'finished') {
-        setStatus('finished');
-        // 需要获取file_url，再次查询状态
-        pollStatus(task_id);
-      } else {
-        // 开始轮询状态
-        pollStatus(task_id);
+      const result = await convertRes.json();
+      
+      if (!convertRes.ok) {
+        throw new Error(result.details || result.error || 'Conversion failed');
       }
+      
+      // 转换成功
+      setStatus('finished');
+      setFileUrl(result.file_url);
+      setTitle(result.title);
+      setProcessingTime(result.processing_time);
+      
     } catch (err) {
       setError((err as Error).message);
       setStatus('error');
     }
   };
 
-  const pollStatus = async (id: string, attempts = 0) => {
-    try {
-      const res = await fetch(`/api/status/${id}`);
-      if (!res.ok) {
-        if (attempts < 3) {
-          setTimeout(() => pollStatus(id, attempts + 1), 2000);
-          return;
-        }
-        return setError('Failed to get task status');
-      }
-      
-      const { status: taskStatus, file_url, progress, error: taskError } = await res.json();
-      
-      setProgress(progress || 0);
-      
-      // 更新状态显示
-      if (taskStatus === 'queued') {
-        setStatus('queued');
-        setTimeout(() => pollStatus(id), 3000); // 排队时3秒轮询
-      } else if (taskStatus === 'processing') {
-        setStatus('converting');
-        setTimeout(() => pollStatus(id), 2000); // 处理中2秒轮询
-      } else if (taskStatus === 'finished') {
-        setFileUrl(file_url);
-        setStatus('finished');
-        // 轮询结束
-      } else if (taskStatus === 'error') {
-        setError(taskError || 'Conversion failed');
-        setStatus('error');
-        // 轮询结束
-      } else {
-        // 未知状态，继续轮询
-        setTimeout(() => pollStatus(id), 2000);
-      }
-    } catch (err) {
-      console.error('Status polling error:', err);
-      if (attempts < 3) {
-        setTimeout(() => pollStatus(id, attempts + 1), 3000);
-      } else {
-        setError('网络连接问题，请检查任务状态');
-        setStatus('error');
-      }
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-orange-50">
@@ -151,12 +109,15 @@ export default function Home() {
               </div>
               <Button 
                 onClick={handleConvert} 
-                disabled={status === 'queued' || status === 'converting'}
+                disabled={status === 'converting'}
                 className="h-14 px-8 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl text-lg disabled:opacity-70"
               >
-                {status === 'queued' ? 'Queued...' : 
-                 status === 'converting' ? 'Converting...' : 
-                 '🎵 Convert to MP3'}
+                {status === 'converting' ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Converting...
+                  </>
+                ) : '🎵 Convert to MP3'}
               </Button>
             </div>
 
@@ -167,59 +128,35 @@ export default function Home() {
               </Alert>
             )}
 
-            {(status === 'queued' || status === 'converting') && (
+            {status === 'converting' && (
               <div className="mb-6">
-                <div className="flex justify-between text-sm text-gray-600 mb-2">
-                  <span>
-                    {status === 'queued' ? '任务已排队，等待后台处理...' : 
-                     status === 'converting' ? 'Converting your video...' : ''}
-                  </span>
-                  <span>{progress}%</span>
+                <div className="text-center p-6 border-2 border-orange-200 bg-orange-50 rounded-xl">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-4"></div>
+                  <p className="text-orange-700 font-semibold mb-2">🎵 Converting your video to MP3...</p>
+                  <p className="text-orange-600 text-sm">This usually takes 1-3 seconds</p>
                 </div>
-                <Progress value={progress} className="h-2" />
-                
-                {status === 'queued' && (
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    🚀 新架构：任务在后台处理，通常需要1-5分钟完成
-                  </p>
-                )}
               </div>
             )}
 
-            {status === 'finished' && fileUrl && taskId && (
+            {status === 'finished' && fileUrl && (
               <div className="border-2 border-green-200 bg-green-50 rounded-xl p-6">
                 <div className="text-center mb-4">
                   <h3 className="text-xl font-semibold text-green-800 mb-2">✅ Conversion Complete!</h3>
-                  <p className="text-green-600">Your MP3 is ready for download and streaming</p>
+                  <p className="text-green-600 mb-2">{title}</p>
+                  <p className="text-green-500 text-sm">Processed in {processingTime}</p>
                 </div>
                 
-                {/* 快速流播放器 */}
-                <div className="mb-4">
-                  <audio 
-                    controls 
-                    src={`/api/stream/${taskId}`}
-                    className="w-full"
-                    preload="metadata"
-                  />
-                </div>
-                
-                {/* 下载按钮组 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <a href={fileUrl} download className="block">
-                    <Button className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl">
+                {/* 下载按钮 */}
+                <div className="text-center">
+                  <a href={fileUrl} download className="inline-block">
+                    <Button className="h-12 px-8 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl text-lg">
                       📥 Download MP3
                     </Button>
                   </a>
-                  
-                  <a href={`/api/stream/${taskId}`} target="_blank" className="block">
-                    <Button variant="outline" className="w-full h-12 border-green-600 text-green-600 hover:bg-green-50 font-semibold rounded-xl">
-                      🎵 Open in Player
-                    </Button>
-                  </a>
                 </div>
                 
-                <p className="text-sm text-gray-500 text-center mt-3">
-                  File expires in 24 hours • Instant streaming available
+                <p className="text-sm text-gray-500 text-center mt-4">
+                  File expires in 24 hours • Click to download your MP3 file
                 </p>
               </div>
             )}

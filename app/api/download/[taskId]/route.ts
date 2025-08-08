@@ -1,66 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { taskManager } from '@/lib/tasks';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ taskId: string }> }) {
-  const { taskId } = await params;
-  
-  // 检查任务是否存在且已完成
-  const task = await taskManager.get(taskId);
-  if (!task || task.status !== 'finished') {
-    return NextResponse.json({ error: 'File not found or not ready' }, { status: 404 });
-  }
-  
-  // 环境检测和数据检查
-  const isVercel = process.env.VERCEL === '1';
-  
-  if (isVercel) {
-    // Vercel 环境：检查音频流
-    if (!task.audioStream) {
-      console.error('Vercel 环境音频流不存在:', taskId);
-      return NextResponse.json({ error: 'Audio stream not found' }, { status: 404 });
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ taskId: string }> }
+) {
+  try {
+    const { taskId } = await params;
+    
+    if (!taskId) {
+      return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
     }
     
-    try {
-      return new NextResponse(task.audioStream as any, {
-        status: 200,
-        headers: {
-          'Content-Type': 'audio/mpeg',
-          'Content-Disposition': `attachment; filename="${taskId}.mp3"`,
-          'Accept-Ranges': 'bytes',
-          'Cache-Control': 'public, max-age=86400',
-          'Access-Control-Allow-Origin': '*',
-          'Transfer-Encoding': 'chunked',
-        },
-      });
-    } catch (error) {
-      console.error('返回音频流失败:', error);
-      return NextResponse.json({ error: 'Failed to stream audio' }, { status: 500 });
-    }
-  } else {
-    // 本地环境：检查音频缓冲区
-    if (!task.audioBuffer) {
-      console.error('本地环境音频缓冲区不存在:', taskId);
-      return NextResponse.json({ error: 'Audio buffer not found' }, { status: 404 });
+    console.log('📥 下载请求:', taskId);
+    
+    // 从Redis获取音频数据
+    const { getRedisClient } = await import('@/lib/kv');
+    const redis = await getRedisClient();
+    
+    console.log('🔍 从Redis读取音频数据...');
+    const audioBase64 = await redis.get(`audio:${taskId}`);
+    const title = await redis.get(`title:${taskId}`);
+    
+    console.log('🔍 Redis结果:');
+    console.log('  - 音频数据存在:', !!audioBase64);
+    console.log('  - 标题存在:', !!title);
+    
+    if (!audioBase64 || !title) {
+      console.log('❌ 文件未找到或已过期');
+      return NextResponse.json({ 
+        error: 'File not found or expired',
+        taskId: taskId
+      }, { status: 404 });
     }
     
-    try {
-      const buffer = task.audioBuffer;
-      console.log(`📁 返回音频文件，大小: ${(buffer.length / 1024 / 1024).toFixed(2)}MB`);
-      
-      return new NextResponse(buffer, {
-        status: 200,
-        headers: {
-          'Content-Type': 'audio/mpeg',
-          'Content-Disposition': `attachment; filename="${taskId}.mp3"`,
-          'Content-Length': buffer.length.toString(),
-          'Accept-Ranges': 'bytes',
-          'Cache-Control': 'public, max-age=86400',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
-    } catch (error) {
-      console.error('返回音频缓冲区失败:', error);
-      return NextResponse.json({ error: 'Failed to return audio' }, { status: 500 });
-    }
+    // 从base64解码回Buffer
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
+    const cached = { audioBuffer, title };
+    
+    console.log(`📥 下载文件: ${taskId}, 大小: ${(cached.audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+    
+    // 设置合适的headers
+    const fileName = `${cached.title.replace(/[^a-zA-Z0-9\-_\s]/g, '').substring(0, 50)}.mp3`;
+    
+    return new NextResponse(cached.audioBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Content-Length': cached.audioBuffer.length.toString(),
+        'Cache-Control': 'public, max-age=86400, immutable'
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ 下载失败:', error);
+    return NextResponse.json({
+      error: 'Download failed',
+      details: (error as Error).message
+    }, { status: 500 });
   }
 }
