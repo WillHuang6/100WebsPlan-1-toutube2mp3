@@ -190,18 +190,109 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     }
   ];
 
-  // 简化版本 - 直接返回错误，暂时跳过API调用
-  console.log('🔄 Vercel环境暂时返回错误状态用于测试');
+  // 详细调试Vercel环境
+  console.log('🎯 开始API处理，环境信息:');
+  console.log('- Node版本:', process.version);
+  console.log('- Platform:', process.platform); 
+  console.log('- VERCEL环境变量:', process.env.VERCEL);
+  console.log('- REDIS_URL存在:', !!process.env.REDIS_URL);
+  console.log('- RAPIDAPI_KEY存在:', !!process.env.RAPIDAPI_KEY);
   
-  const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`⏱️ 总处理时间: ${processingTime}秒`);
-  
-  await taskManager.update(task_id, {
-    status: 'error',
-    error: `Vercel环境暂时不支持转换，请稍后重试。处理时间: ${processingTime}秒`
-  });
-  
-  console.log('✅ 已更新任务状态为错误');
+  // 尝试第一个简单的API调用
+  try {
+    console.log('🔄 尝试RapidAPI调用...');
+    await taskManager.update(task_id, { status: 'processing', progress: 20 });
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      console.log('⏰ API调用超时，终止请求');
+      controller.abort();
+    }, 5000);
+    
+    const apiUrl = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
+    console.log('🌐 请求URL:', apiUrl);
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'X-RapidAPI-Key': process.env.RAPIDAPI_KEY || 'demo-key',
+        'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeout);
+    
+    console.log('📡 API响应状态:', response.status);
+    console.log('📡 API响应头:', Object.fromEntries(response.headers.entries()));
+    
+    if (!response.ok) {
+      console.error('❌ API响应不正常:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('❌ API错误内容:', errorText);
+      throw new Error(`API错误: ${response.status} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    console.log('📋 API响应数据:', JSON.stringify(data, null, 2));
+    
+    // 检查响应格式
+    let downloadUrl = null;
+    if (data.status === 'ok' || data.status === 'success') {
+      downloadUrl = data.link || data.url || data.download_url;
+    }
+    
+    if (downloadUrl) {
+      console.log('✅ 获取到下载链接:', downloadUrl);
+      
+      // 尝试下载音频
+      console.log('📥 开始下载音频...');
+      await taskManager.update(task_id, { status: 'processing', progress: 60 });
+      
+      const audioResponse = await fetch(downloadUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      });
+      
+      if (!audioResponse.ok) {
+        throw new Error(`下载失败: ${audioResponse.status}`);
+      }
+      
+      const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
+      console.log(`✅ 音频下载完成，大小: ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+      
+      // 完成任务
+      const file_url = `/api/download/${task_id}`;
+      urlCache.set(cacheKey, { file_url, created_at: Date.now() });
+      
+      await taskManager.update(task_id, {
+        status: 'finished',
+        file_url,
+        progress: 100,
+        audioBuffer: audioBuffer,
+        title: 'YouTube Audio'
+      });
+      
+      console.log('🎉 转换成功完成!');
+      return;
+      
+    } else {
+      console.error('❌ 无法从API响应中提取下载链接');
+      throw new Error('API返回格式不正确');
+    }
+    
+  } catch (error) {
+    console.error('💥 API调用过程出错:', error);
+    
+    const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    
+    await taskManager.update(task_id, {
+      status: 'error',
+      error: `处理失败: ${(error as Error).message}\n处理时间: ${processingTime}秒\n环境: Vercel`
+    });
+    
+    console.log('❌ 已更新任务为错误状态');
+  }
 }
 
 // 解析API响应
