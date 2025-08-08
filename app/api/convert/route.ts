@@ -63,16 +63,30 @@ export async function POST(req: NextRequest) {
     console.log('⚡ 触发后台处理...');
     
     try {
-      // 使用setImmediate异步启动后台处理，避免阻塞响应
-      console.log('🚀 异步启动后台处理...');
+      // 使用外部HTTP调用来触发后台处理，确保不会被当前函数超时影响
+      console.log('🚀 通过外部调用启动后台处理...');
       
-      setImmediate(() => {
-        processTaskInBackground(task_id, url).catch(error => {
-          console.error('💥 后台处理异常:', error);
-        });
+      const processUrl = process.env.VERCEL_URL ? 
+        `https://${process.env.VERCEL_URL}` : 
+        `https://${process.env.NEXT_PUBLIC_VERCEL_URL || 'ytb2mp3.site'}`;
+      
+      // 异步调用，不等待响应
+      fetch(`${processUrl}/api/process-task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task_id, url })
+      }).then(response => {
+        console.log('✅ 后台处理触发响应:', response.status);
+        if (!response.ok) {
+          response.text().then(errorText => {
+            console.error('❌ 后台处理触发失败:', errorText);
+          });
+        }
+      }).catch(error => {
+        console.error('❌ 后台处理触发异常:', error);
       });
       
-      console.log('✅ 后台处理已异步启动');
+      console.log('✅ 后台处理已外部触发');
       
     } catch (error) {
       console.error('❌ 启动后台处理失败:', error);

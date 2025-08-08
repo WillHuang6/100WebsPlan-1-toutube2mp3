@@ -11,6 +11,9 @@
     },
     "app/api/stream/[taskId]/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/process-task/route.ts": {
+      "maxDuration": 300
     }
   },
   "headers": [
