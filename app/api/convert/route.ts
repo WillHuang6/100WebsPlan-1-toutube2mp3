@@ -107,31 +107,95 @@ export async function POST(req: NextRequest) {
     const { getRedisClient } = await import('@/lib/kv');
     const redis = await getRedisClient();
     
-    // 清理过期的音频文件以释放内存
+    // 激进的内存清理策略 - 先清理再存储
     try {
-      const keys = await redis.keys('audio:*');
-      const now = Date.now();
-      const expiredKeys = [];
+      const audioKeys = await redis.keys('audio:*');
+      console.log(`🔍 找到 ${audioKeys.length} 个现有音频文件`);
       
-      for (const key of keys) {
-        const ttl = await redis.ttl(key);
-        if (ttl < 0 || ttl < 3600) { // 删除已过期或1小时内过期的
-          expiredKeys.push(key, key.replace('audio:', 'title:'));
+      // 如果音频文件过多，清理最旧的文件
+      if (audioKeys.length >= 3) {
+        console.log('⚠️ 音频文件过多，执行激进清理');
+        
+        // 获取所有相关的键（包括title键）
+        const titleKeys = audioKeys.map(key => key.replace('audio:', 'title:'));
+        const allKeysToDelete = [...audioKeys, ...titleKeys];
+        
+        if (allKeysToDelete.length > 0) {
+          const deleteResult = await redis.del(allKeysToDelete);
+          console.log(`🧹 激进清理: 删除了所有 ${Math.floor(deleteResult / 2)} 个音频文件`);
+        }
+      } else {
+        // 正常清理逻辑 - 只清理即将过期的
+        const expiredKeys = [];
+        
+        for (const key of audioKeys) {
+          const ttl = await redis.ttl(key);
+          if (ttl < 0 || ttl < 1800) { // 删除已过期或30分钟内过期的
+            expiredKeys.push(key, key.replace('audio:', 'title:'));
+          }
+        }
+        
+        if (expiredKeys.length > 0) {
+          const deleteResult = await redis.del(expiredKeys);
+          console.log(`🧹 常规清理: 删除了 ${Math.floor(deleteResult / 2)} 个过期音频文件`);
         }
       }
       
-      if (expiredKeys.length > 0) {
-        const deleteResult = await redis.del(expiredKeys);
-        console.log(`🧹 清理了 ${Math.floor(deleteResult / 2)} 个过期音频文件`);
-      }
+      // 等待一下确保删除操作完成
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
     } catch (cleanupError) {
       console.warn('清理过期文件时出错:', cleanupError);
+      
+      // 如果清理出错，尝试删除所有音频文件
+      try {
+        const allAudioKeys = await redis.keys('audio:*');
+        const allTitleKeys = await redis.keys('title:*');
+        const emergencyKeys = [...allAudioKeys, ...allTitleKeys];
+        
+        if (emergencyKeys.length > 0) {
+          await redis.del(emergencyKeys);
+          console.log(`🚨 紧急清理: 删除了所有 ${Math.floor(emergencyKeys.length / 2)} 个文件`);
+        }
+      } catch (emergencyError) {
+        console.error('紧急清理也失败了:', emergencyError);
+      }
     }
     
-    // 存储音频数据到Redis (缩短过期时间到3小时)
-    const audioBase64 = audioBuffer.toString('base64');
-    await redis.setEx(`audio:${taskId}`, 10800, audioBase64); // 3小时 = 10800秒
-    await redis.setEx(`title:${taskId}`, 10800, title);
+    // 存储音频数据到Redis (缩短过期时间到1小时)
+    try {
+      const audioBase64 = audioBuffer.toString('base64');
+      console.log(`💾 准备存储: ${(audioBase64.length / 1024 / 1024).toFixed(2)}MB (base64)`);
+      
+      await redis.setEx(`audio:${taskId}`, 3600, audioBase64); // 1小时 = 3600秒
+      await redis.setEx(`title:${taskId}`, 3600, title);
+      
+      console.log('💾 Redis存储成功');
+      
+    } catch (redisError) {
+      console.error('❌ Redis存储失败:', redisError);
+      
+      // 如果存储失败，再次尝试清理并重试
+      try {
+        console.log('🧹 尝试清理后重新存储...');
+        const allKeys = await redis.keys('*');
+        if (allKeys.length > 0) {
+          await redis.del(allKeys);
+          console.log(`🧹 删除了所有 ${allKeys.length} 个键`);
+        }
+        
+        // 重试存储
+        const audioBase64 = audioBuffer.toString('base64');
+        await redis.setEx(`audio:${taskId}`, 3600, audioBase64);
+        await redis.setEx(`title:${taskId}`, 3600, title);
+        
+        console.log('💾 重试存储成功');
+        
+      } catch (retryError) {
+        console.error('❌ 重试也失败:', retryError);
+        throw new Error(`Redis storage failed: ${(redisError as Error).message}. Even after cleanup, retry failed: ${(retryError as Error).message}`);
+      }
+    }
     
     console.log('💾 存储完成:');
     console.log('  - 任务ID:', taskId);
