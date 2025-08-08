@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 export default function Home() {
   const [url, setUrl] = useState('');
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [status, setStatus] = useState<'idle' | 'converting' | 'finished' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'queued' | 'converting' | 'finished' | 'error'>('idle');
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -20,7 +20,7 @@ export default function Home() {
       return;
     }
 
-    setStatus('converting');
+    setStatus('queued');
     setError(null);
     setFileUrl(null);
     
@@ -31,28 +31,66 @@ export default function Home() {
         body: JSON.stringify({ url, format: 'mp3' }),
       });
       if (!convertRes.ok) throw new Error((await convertRes.json()).error);
-      const { task_id } = await convertRes.json();
+      const { task_id, status: initialStatus, message } = await convertRes.json();
       setTaskId(task_id);
-      pollStatus(task_id);
+      
+      // 如果立即完成（缓存命中），直接设置为完成状态
+      if (initialStatus === 'finished') {
+        setStatus('finished');
+        // 需要获取file_url，再次查询状态
+        pollStatus(task_id);
+      } else {
+        // 开始轮询状态
+        pollStatus(task_id);
+      }
     } catch (err) {
       setError((err as Error).message);
       setStatus('error');
     }
   };
 
-  const pollStatus = async (id: string) => {
-    const res = await fetch(`/api/status/${id}`);
-    if (!res.ok) return setError('Failed to get status');
-    const { status: taskStatus, file_url, progress } = await res.json();
-    setProgress(progress || 0);
-    if (taskStatus === 'finished') {
-      setFileUrl(file_url);
-      setStatus('finished');
-    } else if (taskStatus === 'error') {
-      setError('Conversion failed');
-      setStatus('error');
-    } else {
-      setTimeout(() => pollStatus(id), 2000);
+  const pollStatus = async (id: string, attempts = 0) => {
+    try {
+      const res = await fetch(`/api/status/${id}`);
+      if (!res.ok) {
+        if (attempts < 3) {
+          setTimeout(() => pollStatus(id, attempts + 1), 2000);
+          return;
+        }
+        return setError('Failed to get task status');
+      }
+      
+      const { status: taskStatus, file_url, progress, error: taskError } = await res.json();
+      
+      setProgress(progress || 0);
+      
+      // 更新状态显示
+      if (taskStatus === 'queued') {
+        setStatus('queued');
+        setTimeout(() => pollStatus(id), 3000); // 排队时3秒轮询
+      } else if (taskStatus === 'processing') {
+        setStatus('converting');
+        setTimeout(() => pollStatus(id), 2000); // 处理中2秒轮询
+      } else if (taskStatus === 'finished') {
+        setFileUrl(file_url);
+        setStatus('finished');
+        // 轮询结束
+      } else if (taskStatus === 'error') {
+        setError(taskError || 'Conversion failed');
+        setStatus('error');
+        // 轮询结束
+      } else {
+        // 未知状态，继续轮询
+        setTimeout(() => pollStatus(id), 2000);
+      }
+    } catch (err) {
+      console.error('Status polling error:', err);
+      if (attempts < 3) {
+        setTimeout(() => pollStatus(id, attempts + 1), 3000);
+      } else {
+        setError('网络连接问题，请检查任务状态');
+        setStatus('error');
+      }
     }
   };
 
@@ -113,10 +151,12 @@ export default function Home() {
               </div>
               <Button 
                 onClick={handleConvert} 
-                disabled={status === 'converting'}
-                className="h-14 px-8 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl text-lg"
+                disabled={status === 'queued' || status === 'converting'}
+                className="h-14 px-8 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl text-lg disabled:opacity-70"
               >
-                {status === 'converting' ? 'Converting...' : '🎵 Convert to MP3'}
+                {status === 'queued' ? 'Queued...' : 
+                 status === 'converting' ? 'Converting...' : 
+                 '🎵 Convert to MP3'}
               </Button>
             </div>
 
@@ -127,13 +167,22 @@ export default function Home() {
               </Alert>
             )}
 
-            {status === 'converting' && (
+            {(status === 'queued' || status === 'converting') && (
               <div className="mb-6">
                 <div className="flex justify-between text-sm text-gray-600 mb-2">
-                  <span>Converting your video...</span>
+                  <span>
+                    {status === 'queued' ? '任务已排队，等待后台处理...' : 
+                     status === 'converting' ? 'Converting your video...' : ''}
+                  </span>
                   <span>{progress}%</span>
                 </div>
                 <Progress value={progress} className="h-2" />
+                
+                {status === 'queued' && (
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    🚀 新架构：任务在后台处理，通常需要1-5分钟完成
+                  </p>
+                )}
               </div>
             )}
 

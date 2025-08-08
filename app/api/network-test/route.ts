@@ -59,13 +59,13 @@ export async function GET(req: NextRequest) {
     };
   }
 
-  // 测试3: 实际的API端点（带短超时）
+  // 测试3: 实际的API端点（用户的视频）
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000); // 3秒超时
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10秒超时
     
     const start = Date.now();
-    const response = await fetch('https://youtube-mp36.p.rapidapi.com/dl?id=dQw4w9WgXcQ', {
+    const response = await fetch('https://youtube-mp36.p.rapidapi.com/dl?id=nR5MvP9WFS0', {
       method: 'GET',
       headers: {
         'X-RapidAPI-Key': process.env.RAPIDAPI_KEY || 'test-key',

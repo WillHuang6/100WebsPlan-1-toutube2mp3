@@ -9,6 +9,8 @@ export interface TaskData {
   audioStream?: any;
   audioBuffer?: Buffer;
   title?: string;
+  url?: string;
+  created_at?: number;
 }
 
 // Legacy Map for in-memory storage (fallback/development)
