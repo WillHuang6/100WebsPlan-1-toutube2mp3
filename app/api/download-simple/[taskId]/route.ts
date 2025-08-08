@@ -9,10 +9,10 @@ declare const simpleCache: Map<string, {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
-    const taskId = params.taskId;
+    const { taskId } = await params;
     
     if (!taskId) {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
