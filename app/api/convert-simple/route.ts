@@ -163,8 +163,9 @@ export async function POST(req: NextRequest) {
     const { getRedisClient } = await import('@/lib/kv');
     const redis = await getRedisClient();
     
-    // 存储音频数据到Redis (24小时过期)
-    await redis.setEx(`audio:${taskId}`, 86400, audioBuffer);
+    // 存储音频数据到Redis (24小时过期) - 转换为base64存储
+    const audioBase64 = audioBuffer.toString('base64');
+    await redis.setEx(`audio:${taskId}`, 86400, audioBase64);
     await redis.setEx(`title:${taskId}`, 86400, title);
     
     // 缓存URL映射

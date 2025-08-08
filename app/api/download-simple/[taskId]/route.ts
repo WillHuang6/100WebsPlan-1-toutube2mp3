@@ -18,14 +18,14 @@ export async function GET(
     const redis = await getRedisClient();
     
     console.log('🔍 从Redis读取音频数据...');
-    const audioBuffer = await redis.getBuffer(`audio:${taskId}`);
+    const audioBase64 = await redis.get(`audio:${taskId}`);
     const title = await redis.get(`title:${taskId}`);
     
     console.log('🔍 Redis结果:');
-    console.log('  - 音频数据存在:', !!audioBuffer);
+    console.log('  - 音频数据存在:', !!audioBase64);
     console.log('  - 标题存在:', !!title);
     
-    if (!audioBuffer || !title) {
+    if (!audioBase64 || !title) {
       console.log('❌ 文件未找到或已过期');
       return NextResponse.json({ 
         error: 'File not found or expired',
@@ -33,6 +33,8 @@ export async function GET(
       }, { status: 404 });
     }
     
+    // 从base64解码回Buffer
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
     const cached = { audioBuffer, title };
     
     console.log(`📥 下载文件: ${taskId}, 大小: ${(cached.audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
