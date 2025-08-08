@@ -66,13 +66,29 @@ export async function POST(req: NextRequest) {
   
   if (isVercel) {
     // Vercel 环境：使用第三方 API
-    processWithAPI(task_id, url, cacheKey).catch(error => {
+    processWithAPI(task_id, url, cacheKey).catch(async error => {
       console.error('❌ processWithAPI error:', error);
+      try {
+        await taskManager.update(task_id, { 
+          status: 'error', 
+          error: '处理过程中发生错误，请稍后重试' 
+        });
+      } catch (updateError) {
+        console.error('❌ Failed to update error status:', updateError);
+      }
     });
   } else {
     // 本地环境：使用 yt-dlp
-    processWithYtDlp(task_id, url, cacheKey).catch(error => {
+    processWithYtDlp(task_id, url, cacheKey).catch(async error => {
       console.error('❌ processWithYtDlp error:', error);
+      try {
+        await taskManager.update(task_id, { 
+          status: 'error', 
+          error: '处理过程中发生错误，请稍后重试' 
+        });
+      } catch (updateError) {
+        console.error('❌ Failed to update error status:', updateError);
+      }
     });
   }
   
@@ -97,9 +113,11 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   console.log('🎯 Vercel 环境：使用第三方 API 处理, 视频ID:', videoId);
   console.log('⚡ 函数开始时间:', new Date().toISOString());
   
-  // Vercel 函数有 10秒 执行时间限制，所以设置 8秒 超时
-  const vercelTimeout = 8000; // 8秒
+  // 改进的超时处理 - 延长到9秒，并添加更好的错误处理
+  const vercelTimeout = 9000; // 9秒
+  let isCompleted = false;
   const timeoutTimer = setTimeout(async () => {
+    if (isCompleted) return; // 如果已完成就不处理超时
     console.log('⏰ Vercel函数即将超时，立即返回错误:', task_id);
     try {
       await taskManager.update(task_id, { 
@@ -119,10 +137,16 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     console.log('✅ Redis 连接成功');
   } catch (redisError) {
     console.error('❌ Redis 连接失败:', redisError);
-    await taskManager.update(task_id, { 
-      status: 'error', 
-      error: 'Redis 数据库连接失败，请稍后重试' 
-    });
+    // 尝试最后一次更新，如果失败就放弃
+    try {
+      await taskManager.update(task_id, { 
+        status: 'error', 
+        error: 'Redis 数据库连接失败，请稍后重试' 
+      });
+    } catch (finalError) {
+      console.error('❌ 最终Redis更新也失败了:', finalError);
+    }
+    isCompleted = true;
     clearTimeout(timeoutTimer);
     return;
   }
@@ -177,7 +201,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
       await taskManager.update(task_id, { status: 'processing', progress: 20 + (i * 20) });
       
       const controller = new AbortController();
-      const apiTimeout = 3000; // 3秒 API 超时
+      const apiTimeout = 4000; // 增加到4秒 API 超时
       const timeoutId = setTimeout(() => {
         console.log(`⏰ ${service.name} API 超时`);
         controller.abort();
@@ -246,6 +270,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
           });
           
           console.log('🎉 API 转换成功完成!', file_url);
+          isCompleted = true; // 标记已完成
           clearTimeout(timeoutTimer); // 清除超时定时器
           return;
         }
@@ -258,6 +283,7 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   }
   
   // 所有API都失败了
+  isCompleted = true; // 标记已完成
   clearTimeout(timeoutTimer); // 清除超时定时器
   console.error('💥 所有第三方API都失败了');
   console.log('📋 Error 时 task_id:', task_id);
@@ -265,11 +291,11 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
   const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`⏱️ 总处理时间: ${processingTime}秒`);
   
-  // 临时解决方案：返回一个测试响应，让用户知道系统工作正常
-  console.log('🔄 临时返回测试响应');
+  // 更好的错误信息
+  console.log('🔄 返回API失败响应');
   await taskManager.update(task_id, {
     status: 'error',
-    error: `测试模式：API调用已完成但未找到可用下载链接。\n处理时间: ${processingTime}秒\n视频ID: ${videoId}\n\n这说明系统工作正常，只是第三方API暂时不可用。`
+    error: `所有第三方API都暂时不可用，请稍后重试。\n处理时间: ${processingTime}秒`
   });
 }
 

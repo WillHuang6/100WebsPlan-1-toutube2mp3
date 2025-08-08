@@ -5,8 +5,26 @@ let client: RedisClientType | null = null;
 async function getRedisClient(): Promise<RedisClientType> {
   if (!client) {
     client = createClient({
-      url: process.env.REDIS_URL
+      url: process.env.REDIS_URL,
+      socket: {
+        reconnectStrategy: (retries) => Math.min(retries * 50, 500), // 重连策略
+        connectTimeout: 5000 // 5秒连接超时
+      }
     });
+
+    // 添加错误处理
+    client.on('error', (err) => {
+      console.error('Redis client error:', err);
+    });
+
+    client.on('connect', () => {
+      console.log('✅ Redis connected');
+    });
+
+    client.on('reconnecting', () => {
+      console.log('🔄 Redis reconnecting...');
+    });
+
     await client.connect();
   }
   return client;
