@@ -375,14 +375,24 @@ async function processWithAPIDirectly(taskId: string, url: string, videoId: stri
     const fetchStartTime = Date.now();
     console.log('📡 开始fetch请求...');
     
+    // 添加2分钟超时控制
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log('⏰ RapidAPI调用超时，取消请求...');
+      controller.abort();
+    }, 120000); // 2分钟超时
+    
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
         'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
+      },
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
 
     const fetchDuration = Date.now() - fetchStartTime;
     console.log(`📡 直接API响应状态: ${response.status}, 用时: ${fetchDuration}ms`);
@@ -413,9 +423,20 @@ async function processWithAPIDirectly(taskId: string, url: string, videoId: stri
     console.log('🔗 下载链接:', downloadUrl);
     
     const downloadStartTime = Date.now();
+    
+    // 添加下载超时控制
+    const downloadController = new AbortController();
+    const downloadTimeoutId = setTimeout(() => {
+      console.log('⏰ 音频下载超时，取消下载...');
+      downloadController.abort();
+    }, 180000); // 3分钟下载超时
+    
     const audioResponse = await fetch(downloadUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: downloadController.signal
     });
+    
+    clearTimeout(downloadTimeoutId);
     
     const downloadDuration = Date.now() - downloadStartTime;
     console.log(`📥 下载响应状态: ${audioResponse.status}, 用时: ${downloadDuration}ms`);
@@ -449,9 +470,17 @@ async function processWithAPIDirectly(taskId: string, url: string, videoId: stri
     
     const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
     
+    let errorMessage = `API处理失败: ${(error as Error).message}\n处理时间: ${processingTime}秒`;
+    
+    // 特殊处理超时错误
+    if (error instanceof Error && error.name === 'AbortError') {
+      errorMessage = `API调用超时（2分钟）: 视频可能过长或API响应缓慢\n处理时间: ${processingTime}秒`;
+      console.log('⏰ RapidAPI调用已超时并取消');
+    }
+    
     await taskManager.update(taskId, {
       status: 'error',
-      error: `API处理失败: ${(error as Error).message}\n处理时间: ${processingTime}秒`
+      error: errorMessage
     });
   }
 }
