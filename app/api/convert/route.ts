@@ -69,9 +69,8 @@ export async function POST(req: NextRequest) {
       // 使用外部HTTP调用来触发后台处理，确保不会被当前函数超时影响
       console.log('🚀 通过外部调用启动后台处理...');
       
-      const processUrl = process.env.VERCEL_URL ? 
-        `https://${process.env.VERCEL_URL}` : 
-        `https://${process.env.NEXT_PUBLIC_VERCEL_URL || 'ytb2mp3.site'}`;
+      // 优先使用生产域名，避免预览部署的问题
+      const processUrl = 'https://ytb2mp3.site';
       
       const fullUrl = `${processUrl}/api/process-task`;
       console.log('🌐 目标URL:', fullUrl);
