@@ -39,16 +39,23 @@ export async function GET(
     
     console.log(`📥 下载文件: ${taskId}, 大小: ${(cached.audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
     
-    // 设置合适的headers
-    const fileName = `${cached.title.replace(/[^a-zA-Z0-9\-_\s]/g, '').substring(0, 50)}.mp3`;
+    // 设置合适的headers - 使用更严格的文件名处理
+    const safeTitle = cached.title
+      .replace(/[^\w\s-]/g, '') // 只保留字母、数字、空格和连字符
+      .replace(/\s+/g, '_') // 空格替换为下划线
+      .substring(0, 50) // 限制长度
+      .trim();
+    
+    const fileName = `${safeTitle || 'youtube_audio'}.mp3`;
     
     return new NextResponse(cached.audioBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'audio/mpeg',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         'Content-Length': cached.audioBuffer.length.toString(),
-        'Cache-Control': 'public, max-age=86400, immutable'
+        'Cache-Control': 'public, max-age=86400, immutable',
+        'X-Content-Type-Options': 'nosniff'
       }
     });
     

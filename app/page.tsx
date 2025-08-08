@@ -148,7 +148,11 @@ export default function Home() {
                 
                 {/* 下载按钮 */}
                 <div className="text-center">
-                  <a href={fileUrl} download className="inline-block">
+                  <a 
+                    href={fileUrl} 
+                    download={`${title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').substring(0, 50) || 'youtube_audio'}.mp3`}
+                    className="inline-block"
+                  >
                     <Button className="h-12 px-8 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-xl text-lg">
                       📥 Download MP3
                     </Button>
