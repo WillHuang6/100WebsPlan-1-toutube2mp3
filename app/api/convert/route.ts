@@ -187,10 +187,13 @@ async function processWithAPIBackground(taskId: string, url: string, videoId: st
 
   try {
     console.log('📡 后台调用RapidAPI...');
+    console.log('🔑 API Key存在:', !!process.env.RAPIDAPI_KEY);
     
     // 不设置超时限制，让它慢慢处理
     const apiUrl = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
+    console.log('🌐 API URL:', apiUrl);
     
+    const fetchStartTime = Date.now();
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
@@ -200,8 +203,9 @@ async function processWithAPIBackground(taskId: string, url: string, videoId: st
       }
       // 注意：这里没有signal: controller.signal，让它自然完成
     });
-
-    console.log('📡 后台API响应状态:', response.status);
+    
+    const fetchDuration = Date.now() - fetchStartTime;
+    console.log(`📡 后台API响应状态: ${response.status}, 用时: ${fetchDuration}ms`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -226,10 +230,15 @@ async function processWithAPIBackground(taskId: string, url: string, videoId: st
 
     // 下载音频文件
     console.log('📥 后台下载音频...');
+    console.log('🔗 下载链接:', downloadUrl);
     
+    const downloadStartTime = Date.now();
     const audioResponse = await fetch(downloadUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
     });
+    
+    const downloadDuration = Date.now() - downloadStartTime;
+    console.log(`📥 下载响应状态: ${audioResponse.status}, 用时: ${downloadDuration}ms`);
 
     if (!audioResponse.ok) {
       throw new Error(`下载失败: ${audioResponse.status}`);
