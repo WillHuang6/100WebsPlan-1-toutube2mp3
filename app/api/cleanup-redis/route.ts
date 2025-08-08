@@ -29,13 +29,11 @@ export async function POST(req: NextRequest) {
     
     // 删除过期键
     if (expiredKeys.length > 0) {
-      await redis.del(...expiredKeys);
-      console.log(`🧹 删除了 ${expiredKeys.length} 个过期键`);
+      const deleteResult = await redis.del(expiredKeys);
+      console.log(`🧹 删除了 ${deleteResult} 个过期键`);
     }
     
-    // 获取内存使用信息
-    const memoryInfo = await redis.memory('USAGE');
-    console.log(`💾 清理后内存使用: ${(memoryInfo / 1024 / 1024).toFixed(2)}MB`);
+    console.log(`💾 清理完成`);
     
     return NextResponse.json({
       success: true,
@@ -43,8 +41,7 @@ export async function POST(req: NextRequest) {
       stats: {
         totalKeys: allKeys.length,
         expiredKeys: expiredKeys.length,
-        validKeys: validKeys.length,
-        memoryUsageMB: (memoryInfo / 1024 / 1024).toFixed(2)
+        validKeys: validKeys.length
       }
     });
     

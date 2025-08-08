@@ -121,8 +121,8 @@ export async function POST(req: NextRequest) {
       }
       
       if (expiredKeys.length > 0) {
-        await redis.del(...expiredKeys);
-        console.log(`🧹 清理了 ${expiredKeys.length / 2} 个过期音频文件`);
+        const deleteResult = await redis.del(expiredKeys);
+        console.log(`🧹 清理了 ${Math.floor(deleteResult / 2)} 个过期音频文件`);
       }
     } catch (cleanupError) {
       console.warn('清理过期文件时出错:', cleanupError);
