@@ -297,15 +297,25 @@ async function processWithAPI(task_id: string, url: string, cacheKey: string) {
     
   } catch (error) {
     console.error('💥 API调用过程出错:', error);
+    console.error('💥 错误详情:', (error as Error).stack);
     
     const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
     
+    // 详细错误信息包含在任务状态中，用户可以看到
+    const errorMessage = `处理失败详情:
+错误: ${(error as Error).message}
+处理时间: ${processingTime}秒
+环境: Vercel
+任务ID: ${task_id}
+视频ID: ${videoId}
+时间: ${new Date().toISOString()}`;
+
     await taskManager.update(task_id, {
       status: 'error',
-      error: `处理失败: ${(error as Error).message}\n处理时间: ${processingTime}秒\n环境: Vercel`
+      error: errorMessage
     });
     
-    console.log('❌ 已更新任务为错误状态');
+    console.log('❌ 已更新任务为错误状态，详细信息:', errorMessage);
   }
 }
 
